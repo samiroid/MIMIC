@@ -1,5 +1,5 @@
-DATA="mini_caaohd"
-MODEL="BOW-BIN"
+DATA="mini-AMI"
+MODEL="BERT-POOL"
 
 scripts/run.sh $DATA $MODEL
 

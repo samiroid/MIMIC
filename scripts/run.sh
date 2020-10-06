@@ -6,7 +6,7 @@ DATA=$1
 MODEL=$2
 
 python src/main.py -input_path $INPUT -dataset $DATA -model $MODEL -output_path $OUTPUT \
-                    -cache_path $CACHE
+                    -cache_path $CACHE -mini_tasks
                    
                     
 

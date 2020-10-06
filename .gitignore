@@ -131,3 +131,4 @@ DATA/*
 .DS_Store
 processed/feats_BERT-POOL
 processed/feats_BOW-BIN
+processed.zip

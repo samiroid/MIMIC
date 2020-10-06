@@ -13,9 +13,7 @@ PLOT_VARS=["auroc","auprc","sensitivity","specificity"]
 model="BERT-POOL"
 
 
-# In[ ]:
-
-
+# %%
 from datetime import datetime
 import fnmatch
 import itertools
@@ -42,9 +40,7 @@ warnings.filterwarnings("ignore")
 sns.set(style="darkgrid")
 
 
-# In[ ]:
-
-
+# %%
 def read_cache(path):
     X = None
     try:
@@ -143,9 +139,7 @@ def read_dataset(path, dataset_name):
     return df_train, df_test, df_val    
 
 
-# In[ ]:
-
-
+# %%
 def get_features(data, vocab_size, feature_type, word_vectors=None):
     if feature_type == "BOW-BIN":
         X = features.BOW(data, vocab_size,sparse=True)
@@ -377,14 +371,12 @@ def evaluate_classifier(model, X_test, Y_test,
         helpers.save_results(res, res_path, sep="\t")
     return res
 
-
+# %% [markdown]
 # # Analyses
-
+# %% [markdown]
 # ## Ethnicity 
 
-# In[ ]:
-
-
+# %%
 def ethnicity_plot_deltas(df_delta_W,df_delta_N,df_delta_A,df_delta_H, title):
     df_delta = pd.concat([df_delta_W,df_delta_N,df_delta_A,df_delta_H])    
     #transform results into "long format"
@@ -473,12 +465,10 @@ def ethnicity_analysis(data_path, dataset, feature_type, output_path, cache_path
         ethnicity_plots(df_res, df_res_W, df_res_N, df_res_A, df_res_H, 
                           df_res_delta_W, df_res_delta_N,df_res_delta_A, df_res_delta_H, title)
 
-
+# %% [markdown]
 # ## Ethnicity Binary
 
-# In[ ]:
-
-
+# %%
 def ethnicity_binary_plot_deltas(df_delta_W,df_delta_N, title):
     df_delta = pd.concat([df_delta_W,df_delta_N])    
     #transform results into "long format"
@@ -549,12 +539,10 @@ def ethnicity_binary_analysis(data_path, dataset, feature_type, output_path,
     
     
 
-
+# %% [markdown]
 # ## Gender 
 
-# In[ ]:
-
-
+# %%
 def gender_plot_deltas(df_delta, title):
     #transform results into "long format"
     df_delta_long = df_delta.melt(id_vars=["seed","model"], value_vars=PLOT_VARS, 
@@ -604,12 +592,10 @@ def gender_analysis(data_path, dataset, feature_type, output_path, cache_path=No
         gender_plots(df_res, df_res_M, df_res_F, df_res_delta, title)
     
 
-
+# %% [markdown]
 # ## Run
 
-# In[ ]:
-
-
+# %%
 def run_analyses(data_path, dataset, feature_type, output_path, 
                  cache_path, clear_results=False, tune=False):    
 
@@ -714,5 +700,50 @@ def performance_scatter_plots(cache_path, dataset, model, title):
             
     print("*"*100)
 
+# %% [markdown]
+# ## Run and Plot
 
-# In[ ]:
+# %%
+
+
+# %%
+#Run All the tasks
+def task_done(path,  task):
+    with open(path+"completed_tasks.txt", "a") as fod:
+        fod.write(task+"\n")
+
+def reset_tasks(path):
+    with open(path+"completed_tasks.txt", "w") as fod:
+        fod.write("")
+
+def is_task_done(path,  task):
+    try:
+        with open(path+"completed_tasks.txt", "r") as fid:
+            tasks = fid.read().split("\n")            
+        return task in set(tasks)
+    except FileNotFoundError:
+        #create file if not found
+        with open(path+"completed_tasks.txt", "w") as fid:
+            fid.write("")
+        return False
+
+
+def run_tasks(tasks_path, cache_path, mini_tasks=True, reset=False):
+    #if reset delete the completed tasks file
+    if reset: reset_tasks(cache_path)
+    N_TASKS = 9
+    with open(tasks_path,"r") as fid:
+        for i,l in enumerate(fid):
+            if i > N_TASKS: break
+            fname, task_name = l.strip("\n").split(",")            
+            dataset = "mini-"+fname if mini_tasks else fname
+            # dataset = fname
+            if is_task_done(cache_path, dataset): 
+                print("[dataset: {} already processed]".format(dataset))
+                continue                        
+            print("******** {} {} ********".format(task_name, dataset))      
+            run_analyses(input_path, dataset, model, output_path, tmp_path, clear_results=False)
+            task_done(cache_path, dataset)
+            
+# run_tasks(input_path+"tasks.txt", tmp_path)
+

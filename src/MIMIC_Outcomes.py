@@ -1,10 +1,10 @@
 
 import sys
-# BASE_PATH = "/content/drive/My Drive/collab/"
-BASE_PATH = "/Users/samir/Dev/projects/MIMIC/"
-input_path = BASE_PATH+"MIMIC/DATA/input/"
-output_path = BASE_PATH+"MIMIC/DATA/results/"
-tmp_path = BASE_PATH+"MIMIC/DATA/processed/"
+# BASE_PATH = "/content/drive/My Drive/collab/MIMIC"
+BASE_PATH = "/Users/samir/Dev/projects/MIMIC/MIMIC"
+input_path = BASE_PATH+"/DATA/input/"
+output_path = BASE_PATH+"/DATA/results/"
+tmp_path = BASE_PATH+"/DATA/processed/"
 sys.path.append(BASE_PATH+"TADAT/") 
 N_SEEDS=50
 N_VAL_SEEDS = 3

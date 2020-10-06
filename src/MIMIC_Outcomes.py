@@ -596,7 +596,7 @@ def gender_analysis(data_path, dataset, feature_type, results_path, cache_path=N
 # # Run
 
 # %%
-N_TASKS = 9
+N_TASKS = 12
 def run_analyses(data_path, dataset, feature_type, results_path, 
                  cache_path, clear_results=False, tune=False, plots=False):    
 

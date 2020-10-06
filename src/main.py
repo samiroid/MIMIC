@@ -23,7 +23,7 @@ if __name__ == "__main__":
         print("[running tasks: {}]".format(args.dataset))
         print("input:{}\nmodel:{}\noutput:{}\ncache:{}\nclear_results:{}\ntune:{}".format(args.input_path, args.model, args.output_path, args.cache_path, args.clear_results, args.tune))
         print("mini_tasks:{}\nreset_tasks:{}".format(args.mini_tasks, args.reset_tasks))        
-        run_tasks("{}{}.txt".format(args.input_path,args.dataset), args.cache_path, args.mini_tasks, args.reset_tasks)
+        run_tasks(args.input_path, args.dataset+".txt", args.cache_path, args.mini_tasks, args.reset_tasks)
     
     else:
         print("puta que parius")

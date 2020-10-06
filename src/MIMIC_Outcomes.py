@@ -115,7 +115,7 @@ def plot_scatter_performance(df, title):
 
     
 def read_dataset(path, dataset_name):
-    df_patients = pd.read_csv(input_path+"patients.csv", 
+    df_patients = pd.read_csv(path+"patients.csv", 
                               sep="\t", header=0).drop(columns=["TEXT"])
     df_train = pd.read_csv("{}/{}_train.csv".format(path, dataset_name), 
                            sep="\t", header=0)

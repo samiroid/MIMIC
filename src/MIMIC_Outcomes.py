@@ -3,14 +3,21 @@ import sys
 # BASE_PATH = "/content/drive/My Drive/collab/MIMIC/"
 BASE_PATH = "/Users/samir/Dev/projects/MIMIC/MIMIC/"
 INPUT_PATH = BASE_PATH+"/DATA/input/"
+FEATURES_PATH = BASE_PATH+"/DATA/features/"
 OUTPUT_PATH = BASE_PATH+"/DATA/results/"
 TMP_PATH = BASE_PATH+"/DATA/processed/"
+
+TUNE_OUTPUT_PATH = BASE_PATH+"/DATA/tune_results/"
+TUNE_TMP_PATH = BASE_PATH+"/DATA/tune_processed/"
+
 sys.path.append(BASE_PATH+"TADAT/") 
+
+#configs
 N_SEEDS=50
-N_VAL_SEEDS = 10
-N_VAL_RUNS = 10
+N_VAL_SEEDS = 3
+N_VAL_RUNS = 3
 PLOT_VARS=["auroc","auprc","sensitivity","specificity"]
-model="BERT-POOL"
+MODEL="BERT-POOL"
 
 
 # %%
@@ -51,6 +58,9 @@ def read_cache(path):
     return X
 
 def write_cache(path, o):
+    dirname = os.path.dirname(path)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
     with open(path, "wb") as fo:
         pickle.dump(o, fo)
 
@@ -114,9 +124,7 @@ def plot_scatter_performance(df, title):
     plt.show()  
 
     
-def read_dataset(path, dataset_name):
-    df_patients = pd.read_csv(path+"patients.csv", 
-                              sep="\t", header=0).drop(columns=["TEXT"])
+def read_dataset(path, dataset_name, df_patients):    
     df_train = pd.read_csv("{}/{}_train.csv".format(path, dataset_name), 
                            sep="\t", header=0)
     df_test  = pd.read_csv("{}/{}_test.csv".format(path, dataset_name),
@@ -136,7 +144,7 @@ def read_dataset(path, dataset_name):
     df_val = df_val.join(df_patients, on="SUBJECT_ID", 
                          how="inner", lsuffix="N_").reset_index()
 
-    return df_train, df_test, df_val    
+    return df_train, df_test, df_val   
 
 
 # %%
@@ -163,13 +171,13 @@ def get_features(data, vocab_size, feature_type, word_vectors=None):
         raise NotImplementedError
     return X
 
-def extract_features(feature_type, data_path, cache_path):
-    X = read_cache(cache_path+"feats_{}".format(feature_type))
+def extract_features(feature_type, path):
+    X = read_cache(path+"feats_{}".format(feature_type))
     if X:
         print("[reading cached features]")
         subject_ids, X_feats = X
     else:
-        df = pd.read_csv(data_path+"patients.csv", sep="\t", header=0)
+        df = pd.read_csv(path+"patients.csv", sep="\t", header=0)
         subject_ids = list(df["SUBJECT_ID"])
         docs = list(df["TEXT"])
         if "BERT" in feature_type:
@@ -177,7 +185,7 @@ def extract_features(feature_type, data_path, cache_path):
         else:
             X, word_vocab = vectorizer.docs2idx(docs)
             X_feats = get_features(X,len(word_vocab),feature_type)
-        write_cache(cache_path+"feats_{}".format(feature_type), 
+        write_cache(path+"feats_{}".format(feature_type), 
                     [subject_ids, X_feats])
     return subject_ids, X_feats
 
@@ -214,10 +222,11 @@ def vectorize(df_train, df_val, df_test, subject_ids, features, group_label, sub
 
     return train_feats, train_Y, val_feats, val_Y, test_feats, test_Y,            test_feats_G, test_Y_G, test_feats_O, test_Y_O, label_vocab
 
-def run(data_path, dataset, feature_type, group_label, subgroup, cache_path=None):
-   
-    df_train, df_test, df_val = read_dataset(data_path, dataset)
-    subject_ids, X_feats = extract_features(feature_type, data_path, cache_path)
+def run(data_path, dataset, features_path, feature_type, group_label, subgroup, cache_path):
+    df_patients = pd.read_csv(features_path+"patients.csv", 
+                              sep="\t", header=0).drop(columns=["TEXT"])
+    df_train, df_test, df_val = read_dataset(data_path, dataset, df_patients)
+    subject_ids, X_feats = extract_features(feature_type, features_path)
     X = vectorize(df_train, df_val, df_test, subject_ids, X_feats, group_label, subgroup)
     train_feats, train_Y, val_feats, val_Y, test_feats, test_Y, test_feats_G, test_Y_G, test_feats_O, test_Y_O, label_vocab = X
     print("train/test set size: {}/{}".format(train_feats.shape[0], test_feats.shape[0]))
@@ -265,7 +274,8 @@ def run(data_path, dataset, feature_type, group_label, subgroup, cache_path=None
 
 def tune_SGD(train_X, train_Y, val_X, val_Y, label_vocab, feature_type, seeds, metric):
     best_model = None
-    best_perf = 0
+    best_perf = -1
+    best_seed = None
     runs = {}
     
     for seed in seeds:
@@ -273,21 +283,27 @@ def tune_SGD(train_X, train_Y, val_X, val_Y, label_vocab, feature_type, seeds, m
         model.fit(train_X, train_Y)
         res = evaluate_classifier(model, val_X, val_Y, 
                                   label_vocab, feature_type, seed)
-        perf = res[metric]
+        try:
+            perf = res[metric]
+        except KeyError:
+            raise KeyError("Metric {} Unknown".format(metric))
+        
         runs[seed] = perf
         if perf > best_perf:
             best_perf = perf
             best_model = model
-    return best_model, best_perf, runs
+            best_seed = seed
+    return best_model, best_perf, best_seed, runs
     
-def run_tuning(data_path, dataset, feature_type, group_label, subgroup, cache_path=None):   
-    df_train, df_test, df_val = read_dataset(data_path, dataset)
-    subject_ids, X_feats = extract_features(feature_type, data_path, cache_path)
+def run_tuning(data_path, dataset, features_path, feature_type, group_label, subgroup, cache_path, metric):   
+    df_patients = pd.read_csv(features_path+"patients.csv", 
+                              sep="\t", header=0).drop(columns=["TEXT"])
+    df_train, df_test, df_val = read_dataset(data_path, dataset, df_patients)
+    subject_ids, X_feats = extract_features(feature_type, features_path)
     X = vectorize(df_train, df_val, df_test, subject_ids, X_feats, group_label, subgroup)
     train_X, train_Y, val_X, val_Y, test_X, test_Y, test_X_G, test_Y_G, test_X_O, test_Y_O, label_vocab = X
     print("train/test set size: {}/{}".format(train_X.shape[0], test_X.shape[0]))
     #train/test classifier for each random seed
-
     random.seed(1) #ensure repeateable runs and leverage cache
     random_seeds = random.sample(range(0, 10000), N_VAL_SEEDS*N_VAL_RUNS)
     results = []
@@ -303,10 +319,10 @@ def run_tuning(data_path, dataset, feature_type, group_label, subgroup, cache_pa
         if cache_path: R = read_cache(cache_path+res_fname)                      
         if not R:
             seeds = random_seeds[i*N_VAL_SEEDS:(i+1)*N_VAL_SEEDS]
-            model, perf, val_run = tune_SGD(train_X, train_Y, val_X, val_Y, label_vocab, 
-                                            feature_type, seeds, "sensitivity")
-            print("tuning")
-            pprint.pprint(val_run)
+            model, perf, seed, val_run = tune_SGD(train_X, train_Y, val_X, val_Y, label_vocab, 
+                                            feature_type, seeds, metric)
+            print("[seed: {}| {}: {}]".format(seed, metric, perf))
+            
             res = evaluate_classifier(model, test_X, test_Y, 
                                       label_vocab, feature_type, i)
             res_g = evaluate_classifier(model, test_X_G, test_Y_G, 
@@ -331,7 +347,6 @@ def run_tuning(data_path, dataset, feature_type, group_label, subgroup, cache_pa
     df_res_delta["seed"] = df_res_g["seed"]   
 
     return df_res, df_res_g, df_res_o, df_res_delta 
-
 
 def evaluate_classifier(model, X_test, Y_test,
                    labels, model_name, random_seed, res_path=None):
@@ -418,33 +433,40 @@ def ethnicity_plots(df_res, df_res_W, df_res_N, df_res_A, df_res_H, df_res_delta
                           df_res_delta_A,df_res_delta_H, title)
 
 
-def ethnicity_analysis(data_path, dataset, feature_type, results_path, cache_path=None, plots=True, tune=False):
+def ethnicity_analysis(data_path, dataset, features_path, feature_type, results_path, cache_path=None, plots=True, tune=None):
     if tune:
-        df_res, df_res_W, df_res_W_O, df_res_delta_W = run_tuning(data_path, dataset, feature_type, 
-                                                  "ETHNICITY", "WHITE", 
-                                                  cache_path=cache_path)
-        _, df_res_N, df_res_N_O, df_res_delta_N = run_tuning(data_path, dataset, feature_type, 
-                                                  "ETHNICITY", "BLACK", 
-                                                  cache_path=cache_path)
-        _, df_res_A, df_res_A_O, df_res_delta_A  = run_tuning(data_path, dataset, feature_type, 
-                                                  "ETHNICITY", "ASIAN", 
-                                                  cache_path=cache_path)
-        _, df_res_H, df_res_H_O, df_res_delta_H  = run_tuning(data_path, dataset, feature_type, 
-                                                  "ETHNICITY","HISPANIC", 
-                                                  cache_path=cache_path)
+        df_res, df_res_W, df_res_W_O, df_res_delta_W = run_tuning(data_path, dataset,                                                                               features_path, feature_type, 
+                                                                 "ETHNICITY", "WHITE", 
+                                                                 cache_path, tune)
+        _, df_res_N, df_res_N_O, df_res_delta_N = run_tuning(data_path, dataset, 
+                                                             features_path, feature_type, 
+                                                             "ETHNICITY", "BLACK", 
+                                                              cache_path, tune)
+        _, df_res_A, df_res_A_O, df_res_delta_A  = run_tuning(data_path, dataset, 
+                                                             features_path, feature_type, 
+                                                             "ETHNICITY", "ASIAN", 
+                                                             cache_path, tune)
+        _, df_res_H, df_res_H_O, df_res_delta_H  = run_tuning(data_path, dataset, 
+                                                             features_path, feature_type, 
+                                                             "ETHNICITY","HISPANIC", 
+                                                             cache_path, tune)
     else:
-        df_res, df_res_W, df_res_W_O, df_res_delta_W = run(data_path, dataset, feature_type, 
-                                              "ETHNICITY", "WHITE", 
-                                              cache_path=cache_path)
-        _, df_res_N, df_res_N_O, df_res_delta_N = run(data_path, dataset, feature_type, 
-                                                  "ETHNICITY", "BLACK", 
-                                                  cache_path=cache_path)
-        _, df_res_A, df_res_A_O, df_res_delta_A  = run(data_path, dataset, feature_type, 
-                                                  "ETHNICITY", "ASIAN", 
-                                                  cache_path=cache_path)
-        _, df_res_H, df_res_H_O, df_res_delta_H = run(data_path, dataset, feature_type, 
-                                                  "ETHNICITY","HISPANIC", 
-                                                  cache_path=cache_path)
+        df_res, df_res_W, df_res_W_O, df_res_delta_W = run(data_path, dataset, 
+                                                           features_path, feature_type, 
+                                                           "ETHNICITY", "WHITE", 
+                                                           cache_path=cache_path)
+        _, df_res_N, df_res_N_O, df_res_delta_N = run(data_path, dataset, 
+                                                      features_path, feature_type, 
+                                                       "ETHNICITY", "BLACK", 
+                                                       cache_path=cache_path)
+        _, df_res_A, df_res_A_O, df_res_delta_A  = run(data_path, dataset, 
+                                                      features_path, feature_type, 
+                                                      "ETHNICITY", "ASIAN", 
+                                                      cache_path=cache_path)
+        _, df_res_H, df_res_H_O, df_res_delta_H = run(data_path, dataset, 
+                                                      features_path, feature_type, 
+                                                      "ETHNICITY","HISPANIC", 
+                                                      cache_path=cache_path)
     df_res_delta_W["group"] = ["White v Others"]*len(df_res_delta_W)
     df_res_delta_N["group"] = ["Black v Others"]*len(df_res_delta_N)
     df_res_delta_A["group"] = ["Asian v Others"]*len(df_res_delta_A)
@@ -454,10 +476,13 @@ def ethnicity_analysis(data_path, dataset, feature_type, results_path, cache_pat
         fname = "{}_{}_ethnicity_all_tuned_res.pkl".format(dataset, 
                                                      feature_type).lower()
     else:
-        #save results
+    
         title="{} x ethnicity x {}".format(dataset, feature_type).lower()        
         fname = "{}_{}_ethnicity_all_res.pkl".format(dataset, 
                                                      feature_type).lower()
+    
+    #save results
+    if not os.path.exists(results_path): os.makedirs(results_path)    
     with open(results_path+fname, "wb") as fo:
         pickle.dump([df_res, df_res_W, df_res_N, df_res_A, df_res_H, df_res_delta_W, 
                      df_res_delta_N,df_res_delta_A, df_res_delta_H, title], fo)
@@ -502,22 +527,20 @@ def ethnicity_binary_plots(df_res, df_res_W, df_res_N, df_res_delta_W,
     ethnicity_binary_plot_densities(df_res_W,df_res_N,title)
     ethnicity_binary_plot_deltas(df_res_delta_W, df_res_delta_N, title)
     
-def ethnicity_binary_analysis(data_path, dataset, feature_type, results_path,
-                              cache_path=None, plots=True, tune=False):
+def ethnicity_binary_analysis(data_path, dataset, features_path, feature_type, results_path,
+                              cache_path=None, plots=True, tune=None):
     if tune:        
-        df_res, df_res_W, df_res_W_O, df_res_delta_W = run_tuning(data_path, dataset, feature_type, 
-                                                  "ETHNICITY_BINARY", 
-                                                  "WHITE", cache_path=cache_path)
-        df_res, df_res_N, df_res_N_O, df_res_delta_N = run_tuning(data_path, dataset, feature_type, 
-                                                  "ETHNICITY_BINARY", 
-                                                  "NON-WHITE", cache_path=cache_path)
+        df_res, df_res_W, df_res_W_O, df_res_delta_W = run_tuning(data_path, dataset,                                                                               features_path, feature_type,                                                                        "ETHNICITY_BINARY", "WHITE",                                                                        cache_path, tune)
+        df_res, df_res_N, df_res_N_O, df_res_delta_N = run_tuning(data_path, dataset,                                                                               features_path, feature_type, 
+                                                                "ETHNICITY_BINARY", "NON-WHITE", 
+                                                                cache_path, tune)
     else:
-        df_res, df_res_W, df_res_W_O, df_res_delta_W = run(data_path, dataset, feature_type, 
-                                                  "ETHNICITY_BINARY", 
-                                                  "WHITE", cache_path=cache_path)
-        df_res, df_res_N, df_res_N_O, df_res_delta_N = run(data_path, dataset, feature_type, 
-                                                  "ETHNICITY_BINARY", 
-                                                  "NON-WHITE", cache_path=cache_path)       
+        df_res, df_res_W, df_res_W_O, df_res_delta_W = run(data_path, dataset, 
+                                                            features_path, feature_type,                                                                        "ETHNICITY_BINARY", "WHITE",
+                                                            cache_path)
+        df_res, df_res_N, df_res_N_O, df_res_delta_N = run(data_path, dataset, 
+                                                          features_path, feature_type,                                                                        "ETHNICITY_BINARY", "NON-WHITE", 
+                                                          cache_path)       
         
     df_res_delta_W["group"] = ["White v Others"]*len(df_res_delta_W)
     df_res_delta_N["group"] = ["Non-White v Others"]*len(df_res_delta_N)
@@ -525,10 +548,11 @@ def ethnicity_binary_analysis(data_path, dataset, feature_type, results_path,
     if tune:
         title="{} x ethnicity-binary x {} (tuned)".format(dataset, feature_type).lower()
         fname = "{}_{}_ethnicity_binary_all_tuned_res.pkl".format(dataset, feature_type).lower()
-    else:
-        #save results
+    else:        
         title="{} x ethnicity-binary x {}".format(dataset, feature_type).lower()
         fname = "{}_{}_ethnicity_binary_all_res.pkl".format(dataset, feature_type).lower()
+    #save results
+    if not os.path.exists(results_path): os.makedirs(results_path)    
     with open(results_path+fname, "wb") as fo:
         pickle.dump([df_res, df_res_W, df_res_N, df_res_delta_W, 
                      df_res_delta_N, title], fo)
@@ -536,8 +560,6 @@ def ethnicity_binary_analysis(data_path, dataset, feature_type, results_path,
     if plots:
         ethnicity_binary_plots(df_res, df_res_W, df_res_N, 
                                df_res_delta_W, df_res_delta_N,title)
-    
-    
 
 # %% [markdown]
 # ## Gender 
@@ -571,23 +593,25 @@ def gender_plots(df_res, df_res_M, df_res_F, df_res_delta, title):
     gender_plot_densities(df_res_M, df_res_F, title)
     gender_plot_deltas(df_res_delta, title)    
 
-def gender_analysis(data_path, dataset, feature_type, results_path, cache_path=None, plots=True, tune=False):
+def gender_analysis(data_path, dataset, features_path, feature_type, results_path, cache_path=None, plots=True, tune=None):
     if tune:
-        df_res, df_res_M, df_res_F, df_res_delta = run_tuning(data_path, dataset, feature_type, 
-                                            "GENDER", "M", cache_path=cache_path)
+        df_res, df_res_M, df_res_F, df_res_delta = run_tuning(data_path, dataset, features_path, 
+                                                              feature_type, "GENDER", "M", 
+                                                              cache_path, tune)
     else:
-        df_res, df_res_M, df_res_F, df_res_delta = run(data_path, dataset, feature_type, 
-                                            "GENDER", "M", cache_path=cache_path)
-    #save results
+        df_res, df_res_M, df_res_F, df_res_delta = run(data_path, dataset, features_path,
+                                                       feature_type, "GENDER", "M",               
+                                                       cache_path)    
     if tune:
         title="{} x gender x {} (tuned)".format(dataset, feature_type).lower()
         fname = "{}_{}_gender_all_tuned_res.pkl".format(dataset, feature_type).lower()
     else:
         title="{} x gender x {}".format(dataset, feature_type).lower()
         fname = "{}_{}_gender_all_res.pkl".format(dataset, feature_type).lower()
+    #save results
+    if not os.path.exists(results_path): os.makedirs(results_path)    
     with open(results_path+fname, "wb") as fo:
         pickle.dump([df_res, df_res_M, df_res_F, df_res_delta, title], fo)        
-
     if plots:
         gender_plots(df_res, df_res_M, df_res_F, df_res_delta, title)
     
@@ -596,43 +620,11 @@ def gender_analysis(data_path, dataset, feature_type, results_path, cache_path=N
 # # Run
 
 # %%
-N_TASKS = 12
-def run_analyses(data_path, dataset, feature_type, results_path, 
-                 cache_path, clear_results=False, tune=False, plots=False):    
-
-    if clear_results:
-        clear_cache(cache_path, model=model, dataset=dataset, ctype="res*")
-    
-    gender_analysis(data_path, dataset, model, results_path, 
-                    cache_path, plots=plots, tune=tune)
-
-    ethnicity_binary_analysis(data_path, dataset, model, results_path, 
-                              cache_path, plots=plots, tune=tune)
-    
-    ethnicity_analysis(data_path, dataset, model, results_path, 
-                       cache_path, plots=plots, tune=tune)
+N_TASKS = 9
+# N_TASKS = 50
 
 #Run All the tasks
-def task_done(path,  task):
-    with open(path+"completed_tasks.txt", "a") as fod:
-        fod.write(task+"\n")
-
-def reset_tasks(path):
-    with open(path+"completed_tasks.txt", "w") as fod:
-        fod.write("")
-
-def is_task_done(path,  task):
-    try:
-        with open(path+"completed_tasks.txt", "r") as fid:
-            tasks = fid.read().split("\n")            
-        return task in set(tasks)
-    except FileNotFoundError:
-        #create file if not found
-        with open(path+"completed_tasks.txt", "w") as fid:
-            fid.write("")
-        return False
-
-def run_tasks(data_path, tasks_fname, cache_path, results_path, mini_tasks=True, reset=False):
+def run_tasks(data_path, tasks_fname, features_path, feature_type, cache_path, results_path, mini_tasks=True, reset=False, tune=None):
     #if reset delete the completed tasks file
     if reset: reset_tasks(cache_path)
     
@@ -646,8 +638,36 @@ def run_tasks(data_path, tasks_fname, cache_path, results_path, mini_tasks=True,
                 print("[dataset: {} already processed]".format(dataset))
                 continue                        
             print("******** {} {} ********".format(task_name, dataset))      
-            run_analyses(data_path, dataset, model, results_path, cache_path, clear_results=False)
+            run_analyses(data_path, dataset, features_path, feature_type, results_path, cache_path, clear_results=False, tune=tune)
             task_done(cache_path, dataset)
+
+def task_done(path,  task):
+    dirname = os.path.dirname(path)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    with open(path+"completed_tasks.txt", "a") as fod:
+        fod.write(task+"\n")
+
+def reset_tasks(path):
+    dirname = os.path.dirname(path)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    with open(path+"completed_tasks.txt", "w") as fod:
+        fod.write("")
+
+def is_task_done(path,  task):
+    try:
+        with open(path+"completed_tasks.txt", "r") as fid:
+            tasks = fid.read().split("\n")            
+        return task in set(tasks)
+    except FileNotFoundError:
+        #create file if not found
+        dirname = os.path.dirname(path)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+        with open(path+"completed_tasks.txt", "w") as fid:
+            fid.write("")
+        return False
 
 def plot_tasks(data_path, tasks_fname, results_path, mini_tasks=True):
     with open(data_path+tasks_fname,"r") as fid:        
@@ -657,13 +677,27 @@ def plot_tasks(data_path, tasks_fname, results_path, mini_tasks=True):
             dataset = "mini-"+fname if mini_tasks else fname
             plot_analyses(results_path, dataset, model, task_name)
 
+def run_analyses(data_path, dataset, features_path, feature_type, results_path, 
+                 cache_path, clear_results=False, tune=False, plots=False):    
 
-def plot_analyses(cache_path, dataset, model_name, title, tuned=False):
+    if clear_results:
+        clear_cache(cache_path, model=feature_type, dataset=dataset, ctype="res*")
+    
+    gender_analysis(data_path, dataset, features_path, feature_type, results_path, 
+                    cache_path, plots=plots, tune=tune)
+
+    ethnicity_binary_analysis(data_path, dataset, features_path, feature_type, results_path, 
+                              cache_path, plots=plots, tune=tune)
+    
+    ethnicity_analysis(data_path, dataset, features_path, feature_type, results_path, 
+                       cache_path, plots=plots, tune=tune)
+
+def plot_analyses(cache_path, dataset, feature_type, title, tuned=False):
     file_paths = os.listdir(cache_path)
     if tuned:
-        pattern = "{}_{}_*_all_tuned_res.pkl".format(dataset, model_name).lower()
+        pattern = "{}_{}_*_all_tuned_res.pkl".format(dataset, feature_type).lower()
     else:        
-        pattern = "{}_{}_*_all_res.pkl".format(dataset, model_name).lower()
+        pattern = "{}_{}_*_all_res.pkl".format(dataset, feature_type).lower()
     print("\n\n{} {} {}\n".format("*"*30, title, "*"*30))
     for fname in file_paths:
         if fnmatch.fnmatch(fname, pattern):
@@ -679,9 +713,9 @@ def plot_analyses(cache_path, dataset, model_name, title, tuned=False):
                 print("-"*100)
     print("*"*100)
 
-def metric_scatter_plots(cache_path, dataset, model_name, title):
+def metric_scatter_plots(cache_path, dataset, feature_type, title):
     file_paths = os.listdir(cache_path)
-    pattern = "{}_{}_*_all_res.pkl".format(dataset, model_name).lower()
+    pattern = "{}_{}_*_all_res.pkl".format(dataset, feature_type).lower()
     print("\n\n{} {} {}\n".format("*"*30, title, "*"*30))
     for fname in file_paths:
         if fnmatch.fnmatch(fname, pattern):
@@ -705,9 +739,9 @@ def metric_scatter_plots(cache_path, dataset, model_name, title):
             
     print("*"*100)
 
-def performance_scatter_plots(cache_path, dataset, model_name, title):
+def performance_scatter_plots(cache_path, dataset, feature_type, title):
     file_paths = os.listdir(cache_path)
-    pattern = "{}_{}_*_all_res.pkl".format(dataset, model_name).lower()
+    pattern = "{}_{}_*_all_res.pkl".format(dataset, feature_type).lower()
     print("\n\n{} {} {}\n".format("*"*30, title, "*"*30))
     for fname in file_paths:
         if fnmatch.fnmatch(fname, pattern):
@@ -745,6 +779,4 @@ def performance_scatter_plots(cache_path, dataset, model_name, title):
                 plot_scatter_performance(df_A, title + " (Black)")                
                 print("-"*100)
             
-    print("*"*100)
-
-    
+    print("*"*100)   

@@ -7,10 +7,11 @@ def get_args():
     par.add_argument('-input_path', type=str, required=True, help='input path')
     par.add_argument('-output_path',type=str, required=True, help='output path')
     par.add_argument('-cache_path', type=str, required=True, help='tmp path')
+    par.add_argument('-feats_path', type=str, required=True, help='features path')
     par.add_argument('-dataset', type=str, required=True, help='dataset')
     par.add_argument('-model', type=str, required=True, help='tmp path')
     par.add_argument('-clear_results', action="store_true", help='clear results cache')    
-    par.add_argument('-tune', action="store_true", help='tuning experiments')
+    par.add_argument('-tune', type=str, help='tuning metric')
     par.add_argument('-mini_tasks', action="store_true", help='use small datasets')
     par.add_argument('-reset_tasks', action="store_true", help='re-run all tasks')
 
@@ -23,8 +24,9 @@ if __name__ == "__main__":
         print("[running tasks: {}]".format(args.dataset))
         print("input:{}\nmodel:{}\noutput:{}\ncache:{}\nclear_results:{}\ntune:{}".format(args.input_path, args.model, args.output_path, args.cache_path, args.clear_results, args.tune))
         print("mini_tasks:{}\nreset_tasks:{}".format(args.mini_tasks, args.reset_tasks))        
-        run_tasks(args.input_path, args.dataset+".txt", args.cache_path, args.output_path, args.mini_tasks,args.reset_tasks)    
+        run_tasks(args.input_path, args.dataset+".txt", args.feats_path, args.model, args.cache_path, 
+        args.output_path, args.mini_tasks, args.reset_tasks, args.tune)    
     else:        
         print("input:{}\ndataset:{}\nmodel:{}\noutput:{}\ncache:{}\nclear_results:{}\ntune:{}\n".format(args.input_path, args.dataset, args.model, args.output_path, args.cache_path, args.clear_results, args.tune))
-        run_analyses(args.input_path, args.dataset, args.model, args.output_path, 
+        run_analyses(args.input_path, args.dataset, args.feats_path, args.model, args.output_path, 
                     args.cache_path, args.clear_results, args.tune)

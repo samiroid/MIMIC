@@ -728,11 +728,11 @@ def is_task_done(path,  task):
         return False
 
 
-def run_tasks(tasks_path, cache_path, mini_tasks=True, reset=False):
+def run_tasks(data_path, tasks_fname, cache_path, mini_tasks=True, reset=False):
     #if reset delete the completed tasks file
     if reset: reset_tasks(cache_path)
     N_TASKS = 9
-    with open(tasks_path,"r") as fid:
+    with open(data_path+tasks_fname,"r") as fid:
         for i,l in enumerate(fid):
             if i > N_TASKS: break
             fname, task_name = l.strip("\n").split(",")            
@@ -742,7 +742,7 @@ def run_tasks(tasks_path, cache_path, mini_tasks=True, reset=False):
                 print("[dataset: {} already processed]".format(dataset))
                 continue                        
             print("******** {} {} ********".format(task_name, dataset))      
-            run_analyses(input_path, dataset, model, output_path, tmp_path, clear_results=False)
+            run_analyses(data_path, dataset, model, output_path, tmp_path, clear_results=False)
             task_done(cache_path, dataset)
             
 # run_tasks(input_path+"tasks.txt", tmp_path)

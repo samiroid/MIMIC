@@ -1,7 +1,7 @@
-BASE_PATH="/Users/samir/Dev/projects/MIMIC/"
-INPUT=$BASE_PATH"MIMIC/DATA/input/"
-OUTPUT=$BASE_PATH"MIMIC/DATA/results/"
-CACHE=$BASE_PATH"MIMIC/DATA/processed/"
+BASE_PATH="/Users/samir/Dev/projects/MIMIC/MIMIC"
+INPUT=$BASE_PATH"/DATA/input/"
+OUTPUT=$BASE_PATH"/DATA/results/"
+CACHE=$BASE_PATH"/DATA/processed/"
 DATA=$1
 MODEL=$2
 

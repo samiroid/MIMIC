@@ -1,14 +1,14 @@
 
 import sys
-# BASE_PATH = "/content/drive/My Drive/collab/MIMIC"
-BASE_PATH = "/Users/samir/Dev/projects/MIMIC/MIMIC"
-input_path = BASE_PATH+"/DATA/input/"
-output_path = BASE_PATH+"/DATA/results/"
-tmp_path = BASE_PATH+"/DATA/processed/"
+# BASE_PATH = "/content/drive/My Drive/collab/MIMIC/"
+BASE_PATH = "/Users/samir/Dev/projects/MIMIC/MIMIC/"
+INPUT_PATH = BASE_PATH+"/DATA/input/"
+OUTPUT_PATH = BASE_PATH+"/DATA/results/"
+TMP_PATH = BASE_PATH+"/DATA/processed/"
 sys.path.append(BASE_PATH+"TADAT/") 
 N_SEEDS=50
-N_VAL_SEEDS = 3
-N_VAL_RUNS = 3
+N_VAL_SEEDS = 10
+N_VAL_RUNS = 10
 PLOT_VARS=["auroc","auprc","sensitivity","specificity"]
 model="BERT-POOL"
 
@@ -163,13 +163,13 @@ def get_features(data, vocab_size, feature_type, word_vectors=None):
         raise NotImplementedError
     return X
 
-def extract_features(feature_type, input_path, cache_path):
+def extract_features(feature_type, data_path, cache_path):
     X = read_cache(cache_path+"feats_{}".format(feature_type))
     if X:
         print("[reading cached features]")
         subject_ids, X_feats = X
     else:
-        df = pd.read_csv(input_path+"patients.csv", sep="\t", header=0)
+        df = pd.read_csv(data_path+"patients.csv", sep="\t", header=0)
         subject_ids = list(df["SUBJECT_ID"])
         docs = list(df["TEXT"])
         if "BERT" in feature_type:
@@ -217,7 +217,7 @@ def vectorize(df_train, df_val, df_test, subject_ids, features, group_label, sub
 def run(data_path, dataset, feature_type, group_label, subgroup, cache_path=None):
    
     df_train, df_test, df_val = read_dataset(data_path, dataset)
-    subject_ids, X_feats = extract_features(feature_type, input_path, cache_path)
+    subject_ids, X_feats = extract_features(feature_type, data_path, cache_path)
     X = vectorize(df_train, df_val, df_test, subject_ids, X_feats, group_label, subgroup)
     train_feats, train_Y, val_feats, val_Y, test_feats, test_Y, test_feats_G, test_Y_G, test_feats_O, test_Y_O, label_vocab = X
     print("train/test set size: {}/{}".format(train_feats.shape[0], test_feats.shape[0]))
@@ -282,7 +282,7 @@ def tune_SGD(train_X, train_Y, val_X, val_Y, label_vocab, feature_type, seeds, m
     
 def run_tuning(data_path, dataset, feature_type, group_label, subgroup, cache_path=None):   
     df_train, df_test, df_val = read_dataset(data_path, dataset)
-    subject_ids, X_feats = extract_features(feature_type, input_path, cache_path)
+    subject_ids, X_feats = extract_features(feature_type, data_path, cache_path)
     X = vectorize(df_train, df_val, df_test, subject_ids, X_feats, group_label, subgroup)
     train_X, train_Y, val_X, val_Y, test_X, test_Y, test_X_G, test_Y_G, test_X_O, test_Y_O, label_vocab = X
     print("train/test set size: {}/{}".format(train_X.shape[0], test_X.shape[0]))
@@ -418,7 +418,7 @@ def ethnicity_plots(df_res, df_res_W, df_res_N, df_res_A, df_res_H, df_res_delta
                           df_res_delta_A,df_res_delta_H, title)
 
 
-def ethnicity_analysis(data_path, dataset, feature_type, output_path, cache_path=None, plots=True, tune=False):
+def ethnicity_analysis(data_path, dataset, feature_type, results_path, cache_path=None, plots=True, tune=False):
     if tune:
         df_res, df_res_W, df_res_W_O, df_res_delta_W = run_tuning(data_path, dataset, feature_type, 
                                                   "ETHNICITY", "WHITE", 
@@ -458,7 +458,7 @@ def ethnicity_analysis(data_path, dataset, feature_type, output_path, cache_path
         title="{} x ethnicity x {}".format(dataset, feature_type).lower()        
         fname = "{}_{}_ethnicity_all_res.pkl".format(dataset, 
                                                      feature_type).lower()
-    with open(output_path+fname, "wb") as fo:
+    with open(results_path+fname, "wb") as fo:
         pickle.dump([df_res, df_res_W, df_res_N, df_res_A, df_res_H, df_res_delta_W, 
                      df_res_delta_N,df_res_delta_A, df_res_delta_H, title], fo)
     if plots:
@@ -502,7 +502,7 @@ def ethnicity_binary_plots(df_res, df_res_W, df_res_N, df_res_delta_W,
     ethnicity_binary_plot_densities(df_res_W,df_res_N,title)
     ethnicity_binary_plot_deltas(df_res_delta_W, df_res_delta_N, title)
     
-def ethnicity_binary_analysis(data_path, dataset, feature_type, output_path,
+def ethnicity_binary_analysis(data_path, dataset, feature_type, results_path,
                               cache_path=None, plots=True, tune=False):
     if tune:        
         df_res, df_res_W, df_res_W_O, df_res_delta_W = run_tuning(data_path, dataset, feature_type, 
@@ -529,7 +529,7 @@ def ethnicity_binary_analysis(data_path, dataset, feature_type, output_path,
         #save results
         title="{} x ethnicity-binary x {}".format(dataset, feature_type).lower()
         fname = "{}_{}_ethnicity_binary_all_res.pkl".format(dataset, feature_type).lower()
-    with open(output_path+fname, "wb") as fo:
+    with open(results_path+fname, "wb") as fo:
         pickle.dump([df_res, df_res_W, df_res_N, df_res_delta_W, 
                      df_res_delta_N, title], fo)
 
@@ -571,7 +571,7 @@ def gender_plots(df_res, df_res_M, df_res_F, df_res_delta, title):
     gender_plot_densities(df_res_M, df_res_F, title)
     gender_plot_deltas(df_res_delta, title)    
 
-def gender_analysis(data_path, dataset, feature_type, output_path, cache_path=None, plots=True, tune=False):
+def gender_analysis(data_path, dataset, feature_type, results_path, cache_path=None, plots=True, tune=False):
     if tune:
         df_res, df_res_M, df_res_F, df_res_delta = run_tuning(data_path, dataset, feature_type, 
                                             "GENDER", "M", cache_path=cache_path)
@@ -585,7 +585,7 @@ def gender_analysis(data_path, dataset, feature_type, output_path, cache_path=No
     else:
         title="{} x gender x {}".format(dataset, feature_type).lower()
         fname = "{}_{}_gender_all_res.pkl".format(dataset, feature_type).lower()
-    with open(output_path+fname, "wb") as fo:
+    with open(results_path+fname, "wb") as fo:
         pickle.dump([df_res, df_res_M, df_res_F, df_res_delta, title], fo)        
 
     if plots:
@@ -593,30 +593,77 @@ def gender_analysis(data_path, dataset, feature_type, output_path, cache_path=No
     
 
 # %% [markdown]
-# ## Run
+# # Run
 
 # %%
-def run_analyses(data_path, dataset, feature_type, output_path, 
-                 cache_path, clear_results=False, tune=False):    
+N_TASKS = 9
+def run_analyses(data_path, dataset, feature_type, results_path, 
+                 cache_path, clear_results=False, tune=False, plots=False):    
 
     if clear_results:
         clear_cache(cache_path, model=model, dataset=dataset, ctype="res*")
     
-    gender_analysis(input_path, dataset, model, output_path, 
-                    cache_path, plots=False, tune=tune)
+    gender_analysis(data_path, dataset, model, results_path, 
+                    cache_path, plots=plots, tune=tune)
 
-    ethnicity_binary_analysis(input_path, dataset, model, output_path, 
-                              cache_path, plots=False, tune=tune)
+    ethnicity_binary_analysis(data_path, dataset, model, results_path, 
+                              cache_path, plots=plots, tune=tune)
     
-    ethnicity_analysis(input_path, dataset, model, output_path, 
-                       cache_path, plots=False, tune=tune)
+    ethnicity_analysis(data_path, dataset, model, results_path, 
+                       cache_path, plots=plots, tune=tune)
 
-def plot_analyses(cache_path, dataset, model, title, tuned=False):
+#Run All the tasks
+def task_done(path,  task):
+    with open(path+"completed_tasks.txt", "a") as fod:
+        fod.write(task+"\n")
+
+def reset_tasks(path):
+    with open(path+"completed_tasks.txt", "w") as fod:
+        fod.write("")
+
+def is_task_done(path,  task):
+    try:
+        with open(path+"completed_tasks.txt", "r") as fid:
+            tasks = fid.read().split("\n")            
+        return task in set(tasks)
+    except FileNotFoundError:
+        #create file if not found
+        with open(path+"completed_tasks.txt", "w") as fid:
+            fid.write("")
+        return False
+
+def run_tasks(data_path, tasks_fname, cache_path, results_path, mini_tasks=True, reset=False):
+    #if reset delete the completed tasks file
+    if reset: reset_tasks(cache_path)
+    
+    with open(data_path+tasks_fname,"r") as fid:
+        for i,l in enumerate(fid):
+            if i > N_TASKS: break
+            fname, task_name = l.strip("\n").split(",")            
+            dataset = "mini-"+fname if mini_tasks else fname
+            # dataset = fname
+            if is_task_done(cache_path, dataset): 
+                print("[dataset: {} already processed]".format(dataset))
+                continue                        
+            print("******** {} {} ********".format(task_name, dataset))      
+            run_analyses(data_path, dataset, model, results_path, cache_path, clear_results=False)
+            task_done(cache_path, dataset)
+
+def plot_tasks(data_path, tasks_fname, results_path, mini_tasks=True):
+    with open(data_path+tasks_fname,"r") as fid:        
+        for i,l in enumerate(fid):
+            if i > N_TASKS: break
+            fname, task_name = l.strip("\n").split(",")
+            dataset = "mini-"+fname if mini_tasks else fname
+            plot_analyses(results_path, dataset, model, task_name)
+
+
+def plot_analyses(cache_path, dataset, model_name, title, tuned=False):
     file_paths = os.listdir(cache_path)
     if tuned:
-        pattern = "{}_{}_*_all_tuned_res.pkl".format(dataset, model).lower()
+        pattern = "{}_{}_*_all_tuned_res.pkl".format(dataset, model_name).lower()
     else:        
-        pattern = "{}_{}_*_all_res.pkl".format(dataset, model).lower()
+        pattern = "{}_{}_*_all_res.pkl".format(dataset, model_name).lower()
     print("\n\n{} {} {}\n".format("*"*30, title, "*"*30))
     for fname in file_paths:
         if fnmatch.fnmatch(fname, pattern):
@@ -632,9 +679,9 @@ def plot_analyses(cache_path, dataset, model, title, tuned=False):
                 print("-"*100)
     print("*"*100)
 
-def metric_scatter_plots(cache_path, dataset, model, title):
+def metric_scatter_plots(cache_path, dataset, model_name, title):
     file_paths = os.listdir(cache_path)
-    pattern = "{}_{}_*_all_res.pkl".format(dataset, model).lower()
+    pattern = "{}_{}_*_all_res.pkl".format(dataset, model_name).lower()
     print("\n\n{} {} {}\n".format("*"*30, title, "*"*30))
     for fname in file_paths:
         if fnmatch.fnmatch(fname, pattern):
@@ -658,9 +705,9 @@ def metric_scatter_plots(cache_path, dataset, model, title):
             
     print("*"*100)
 
-def performance_scatter_plots(cache_path, dataset, model, title):
+def performance_scatter_plots(cache_path, dataset, model_name, title):
     file_paths = os.listdir(cache_path)
-    pattern = "{}_{}_*_all_res.pkl".format(dataset, model).lower()
+    pattern = "{}_{}_*_all_res.pkl".format(dataset, model_name).lower()
     print("\n\n{} {} {}\n".format("*"*30, title, "*"*30))
     for fname in file_paths:
         if fnmatch.fnmatch(fname, pattern):
@@ -700,50 +747,4 @@ def performance_scatter_plots(cache_path, dataset, model, title):
             
     print("*"*100)
 
-# %% [markdown]
-# ## Run and Plot
-
-# %%
-
-
-# %%
-#Run All the tasks
-def task_done(path,  task):
-    with open(path+"completed_tasks.txt", "a") as fod:
-        fod.write(task+"\n")
-
-def reset_tasks(path):
-    with open(path+"completed_tasks.txt", "w") as fod:
-        fod.write("")
-
-def is_task_done(path,  task):
-    try:
-        with open(path+"completed_tasks.txt", "r") as fid:
-            tasks = fid.read().split("\n")            
-        return task in set(tasks)
-    except FileNotFoundError:
-        #create file if not found
-        with open(path+"completed_tasks.txt", "w") as fid:
-            fid.write("")
-        return False
-
-
-def run_tasks(data_path, tasks_fname, cache_path, mini_tasks=True, reset=False):
-    #if reset delete the completed tasks file
-    if reset: reset_tasks(cache_path)
-    N_TASKS = 9
-    with open(data_path+tasks_fname,"r") as fid:
-        for i,l in enumerate(fid):
-            if i > N_TASKS: break
-            fname, task_name = l.strip("\n").split(",")            
-            dataset = "mini-"+fname if mini_tasks else fname
-            # dataset = fname
-            if is_task_done(cache_path, dataset): 
-                print("[dataset: {} already processed]".format(dataset))
-                continue                        
-            print("******** {} {} ********".format(task_name, dataset))      
-            run_analyses(data_path, dataset, model, output_path, tmp_path, clear_results=False)
-            task_done(cache_path, dataset)
-            
-# run_tasks(input_path+"tasks.txt", tmp_path)
-
+    

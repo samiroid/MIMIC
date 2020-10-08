@@ -13,9 +13,9 @@ sys.path.append(BASE_PATH+"TADAT/")
 
 #configs
 N_SEEDS=50
-N_VAL_SEEDS = 4
-N_VAL_RUNS = 4
-N_TASKS = 3
+N_VAL_SEEDS = 10
+N_VAL_RUNS = 25
+N_TASKS = 50
 # N_TASKS = 50
 PLOT_VARS=["auroc","auprc","sensitivity","specificity"]
 MODEL="BERT-POOL"

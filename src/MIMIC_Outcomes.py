@@ -1,4 +1,3 @@
-
 import sys
 # BASE_PATH = "/content/drive/My Drive/collab/MIMIC/"
 BASE_PATH = "/Users/samir/Dev/projects/MIMIC/MIMIC/"
@@ -14,10 +13,10 @@ sys.path.append(BASE_PATH+"TADAT/")
 
 #configs
 N_SEEDS=50
-N_VAL_SEEDS = 1
-N_VAL_RUNS = 10
+N_VAL_SEEDS = 4
+N_VAL_RUNS = 4
 N_TASKS = 3
-N_TASKS = 50
+# N_TASKS = 50
 PLOT_VARS=["auroc","auprc","sensitivity","specificity"]
 MODEL="BERT-POOL"
 
@@ -25,6 +24,9 @@ GROUPS = { "GENDER": ["M"],
          "ETHNICITY_BINARY": ["WHITE","NON-WHITE"],
          "ETHNICITY": ["WHITE","BLACK","ASIAN","HISPANIC"]
 }
+MAJORITY_GROUP = { "GENDER": "M",
+                   "ETHNICITY_BINARY": "WHITE",
+                    "ETHNICITY": "WHITE" }
 
 
 # %%
@@ -130,8 +132,7 @@ def plot_scatter_performance(df, title):
                         ax=ax[coord[0]][coord[1]])
     fig.suptitle(title, y=1.02)
     plt.tight_layout()
-    plt.show()  
-
+    plt.show() 
     
 def read_dataset(path, dataset_name, df_patients):    
     df_train = pd.read_csv("{}/{}_train.csv".format(path, dataset_name), 
@@ -278,10 +279,16 @@ def vectorize_train(df_train, df_val, subject_ids, feature_matrix):
 
     return train_feats, train_Y, val_feats, val_Y, label_vocab
 
-def vectorize_test(df_test, subject_ids, feature_matrix, label_vocab, group_label, subgroup):
+def vectorize_test(df_test, subject_ids, feature_matrix, label_vocab, group_label, subgroup, subsample=False):
     #target subgroup vs others
     df_test_G = df_test[df_test[group_label] == subgroup]
     df_test_O = df_test[df_test[group_label] != subgroup]    
+    
+    if subsample and MAJORITY_GROUP[group_label] == subgroup:
+        n_groups = len(GROUPS[group_label])
+        avg_len = int(len(df_test_O)/n_groups)
+        df_test_G = df_test_G.head(avg_len)
+
     print("{}: {} | others: {}".format(subgroup,
                                        len(df_test_G),len(df_test_O)))        
     #vectorize labels           
@@ -303,7 +310,7 @@ def vectorize_test(df_test, subject_ids, feature_matrix, label_vocab, group_labe
     return test_feats, test_Y, test_feats_G, test_Y_G, test_feats_O, test_Y_O
 
 
-def tune_run(data_path, dataset, features_path, feature_type, cache_path, metric):
+def tune_run(data_path, dataset, features_path, feature_type, cache_path, subsample, metric):
     df_patients = pd.read_csv(features_path+"patients.csv", 
                               sep="\t", header=0).drop(columns=["TEXT"])
     df_train, df_test, df_val = read_dataset(data_path, dataset, df_patients)
@@ -325,7 +332,8 @@ def tune_run(data_path, dataset, features_path, feature_type, cache_path, metric
     for i in range(N_VAL_RUNS):        
         res_fname = "{}_{}_tuned_res{}.pkl".format(dataset, feature_type, i).lower()
         #look for cached results
-        curr_results = read_cache(cache_path+res_fname)              
+        curr_results = None
+        if cache_path: read_cache(cache_path+res_fname)              
         if not curr_results:
             curr_results = defaultdict(lambda: defaultdict(dict))  
             seeds = random_seeds[i*N_VAL_SEEDS:(i+1)*N_VAL_SEEDS]
@@ -342,7 +350,7 @@ def tune_run(data_path, dataset, features_path, feature_type, cache_path, metric
                         Z = test_sets["{}-{}".format(group, subgroup)]
                     except KeyError:    
                         #load and cache test sets
-                        Z = vectorize_test(df_test, subject_ids, X_feats, label_vocab, group, subgroup) 
+                        Z = vectorize_test(df_test, subject_ids, X_feats, label_vocab, group, subgroup, subsample) 
                         test_sets["{}-{}".format(group, subgroup)] = Z
                     #evaluate
                     test_feats, test_Y, test_feats_G, test_Y_G, test_feats_O, test_Y_O = Z
@@ -360,7 +368,7 @@ def tune_run(data_path, dataset, features_path, feature_type, cache_path, metric
                     curr_results[group][subgroup]["results_g"] = res_g
                     curr_results[group][subgroup]["results_o"] = res_o
             #cache results
-            write_cache(cache_path+res_fname, curr_results)                
+            if cache_path: write_cache(cache_path+res_fname, curr_results)                
         else:
             print("loaded cached results | run: {}".format(i))        
         incremental_results = merge_results(curr_results, incremental_results)                
@@ -370,7 +378,7 @@ def tune_run(data_path, dataset, features_path, feature_type, cache_path, metric
 
     return df_results
 
-def run(data_path, dataset, features_path, feature_type, cache_path):
+def run(data_path, dataset, features_path, feature_type, cache_path, subsample=False):
     df_patients = pd.read_csv(features_path+"patients.csv", 
                               sep="\t", header=0).drop(columns=["TEXT"])
     df_train, df_test, df_val = read_dataset(data_path, dataset, df_patients)
@@ -392,7 +400,8 @@ def run(data_path, dataset, features_path, feature_type, cache_path):
     for seed in random_seeds:        
         res_fname = "{}_{}_res{}.pkl".format(dataset, feature_type, seed).lower()                
         #look for cached results
-        curr_results = read_cache(cache_path+res_fname)              
+        curr_results = None
+        if cache_path: curr_results = read_cache(cache_path+res_fname)              
         if not curr_results:
             curr_results = defaultdict(lambda: defaultdict(dict))  
             print("[seed: {}]".format(seed))
@@ -408,7 +417,7 @@ def run(data_path, dataset, features_path, feature_type, cache_path):
                         Z = test_sets["{}-{}".format(group, subgroup)]
                     except KeyError:    
                         #load and cache test sets
-                        Z = vectorize_test(df_test, subject_ids, X_feats, label_vocab, group, subgroup) 
+                        Z = vectorize_test(df_test, subject_ids, X_feats, label_vocab, group, subgroup, subsample) 
                         test_sets["{}-{}".format(group, subgroup)] = Z
                     #evaluate
                     test_feats, test_Y, test_feats_G, test_Y_G, test_feats_O, test_Y_O = Z
@@ -426,7 +435,7 @@ def run(data_path, dataset, features_path, feature_type, cache_path):
                     curr_results[group][subgroup]["results_g"] = res_g
                     curr_results[group][subgroup]["results_o"] = res_o
             #cache results
-            write_cache(cache_path+res_fname, curr_results)                
+            if cache_path: write_cache(cache_path+res_fname, curr_results)                
         else:
             print("loaded cached results | seed: {}".format(seed))        
         incremental_results = merge_results(curr_results, incremental_results)
@@ -470,10 +479,10 @@ def results_to_df(results):
 
 # %%
 #Run All the tasks
-def run_tasks(data_path, tasks_fname, features_path, feature_type, cache_path, results_path, mini_tasks=True, reset=False, tune_metric=None):
+def run_tasks(data_path, tasks_fname, features_path, feature_type, results_path, cache_path,  
+             reset=False, tune_metric=None, subsample=False, mini_tasks=True):
     #if reset delete the completed tasks file
-    if reset: reset_tasks(cache_path)
-    
+    if reset: reset_tasks(cache_path)    
     with open(data_path+tasks_fname,"r") as fid:
         for i,l in enumerate(fid):
             if i > N_TASKS: break
@@ -484,7 +493,9 @@ def run_tasks(data_path, tasks_fname, features_path, feature_type, cache_path, r
                 print("[dataset: {} already processed]".format(dataset))
                 continue                        
             print("******** {} {} ********".format(task_name, dataset))      
-            run_analyses(data_path, dataset, features_path, feature_type, results_path, cache_path, clear_results=False, tune_metric=tune_metric)
+            run_analyses(data_path, dataset, features_path, feature_type, results_path, 
+                         cache_path, clear_results=False, tune_metric=tune_metric, 
+                         subsample=subsample)
             task_done(cache_path, dataset)
 
 def task_done(path,  task):
@@ -517,21 +528,21 @@ def is_task_done(path,  task):
 
 def plot_tasks(data_path, tasks_fname, feature_type, results_path, mini_tasks=True, tune_metric=None):
     with open(data_path+tasks_fname,"r") as fid:        
-        for i,l in enumerate(fid):
-            if i > N_TASKS: break
+        for i,l in enumerate(fid):            
             fname, task_name = l.strip("\n").split(",")
             dataset = "mini-"+fname if mini_tasks else fname
             plot_analyses(results_path, dataset, feature_type, task_name, tune_metric)
 
 def run_analyses(data_path, dataset, features_path, feature_type, results_path, 
-                 cache_path, clear_results=False, tune_metric=None, plots=False):    
+                 cache_path, clear_results=False, tune_metric=None, subsample=False, 
+                 plots=False):    
 
     if clear_results:
         clear_cache(cache_path, model=feature_type, dataset=dataset, ctype="res*")
     if tune_metric:
-        df_results = tune_run(data_path, dataset, features_path, feature_type, cache_path, tune_metric)                  
+        df_results = tune_run(data_path, dataset, features_path, feature_type, cache_path, subsample, tune_metric)  
     else:
-        df_results = run(data_path, dataset, features_path, feature_type, cache_path)                  
+        df_results = run(data_path, dataset, features_path, feature_type, cache_path, subsample)                  
     process_gender(df_results["GENDER"], dataset, feature_type, results_path, tune_metric, plots)
     process_ethnicity_binary(df_results["ETHNICITY_BINARY"], dataset, feature_type, results_path, 
                              tune_metric, plots=plots)
@@ -626,7 +637,7 @@ def process_ethnicity(df_results, dataset, feature_type, results_path, tune_metr
     df_res_delta_A["group"] = ["Asian v Others"]*len(df_res_delta_A)
     df_res_delta_H["group"] = ["Hispanic v Others"]*len(df_res_delta_H)
     if tune_metric:
-        title="{} x ethnicity x {} (tuned)".format(dataset, feature_type).lower()        
+        title="{} x ethnicity x {} ({} tuned)".format(dataset, feature_type, tune_metric).lower()        
         fname = "{}_{}_ethnicity_all_tuned_res.pkl".format(dataset, 
                                                      feature_type).lower()
     else:    
@@ -694,7 +705,7 @@ def process_ethnicity_binary(df_results, dataset, feature_type, results_path, tu
     df_res_delta_N["group"] = ["Non-White v Others"]*len(df_res_delta_N)
     
     if tune_metric:
-        title="{} x ethnicity-binary x {} (tuned)".format(dataset, feature_type).lower()
+        title="{} x ethnicity-binary x {} ({} tuned)".format(dataset, feature_type, tune_metric).lower()
         fname = "{}_{}_ethnicity_binary_all_tuned_res.pkl".format(dataset, feature_type).lower()
     else:        
         title="{} x ethnicity-binary x {}".format(dataset, feature_type).lower()
@@ -749,7 +760,7 @@ def process_gender(df_results, dataset, feature_type, results_path, tune_metric=
     df_res_F = df_results["M"]["results_o"] 
     df_res_delta = df_results["M"]["delta"] 
     if tune_metric:
-        title="{} x gender x {} (tuned)".format(dataset, feature_type).lower()
+        title="{} x gender x {} ({} tuned)".format(dataset, feature_type, tune_metric).lower()
         fname = "{}_{}_gender_all_tuned_res.pkl".format(dataset, feature_type).lower()
     else:
         title="{} x gender x {}".format(dataset, feature_type).lower()

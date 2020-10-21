@@ -9,7 +9,7 @@ MODEL="BERT-POOL"
 
 python src/main.py -input_path $INPUT -dataset $DATA -model $MODEL -feats_path $FEATURES \
                    -output_path $OUTPUT \
-                   -cache_path $CACHE -mini_tasks
+                   -cache_path $CACHE -subsample
                    
                     
 

@@ -14,11 +14,11 @@ TUNE_TMP_PATH = BASE_PATH+"/DATA/tune_processed/"
 sys.path.append("/content/drive/My Drive/collab/TADAT/") 
 
 #configs
-N_SEEDS=8
-N_VAL_SEEDS = 4
-N_VAL_RUNS = 4
+N_SEEDS=50
+N_VAL_SEEDS = 10
+N_VAL_RUNS = 50
 N_TASKS = 3
-# N_TASKS = 50
+N_TASKS = 50
 # PLOT_VARS=["auroc","auprc","sensitivity","specificity"]
 PLOT_VARS=["auroc","sensitivity"]
 MODEL="BERT-POOL"

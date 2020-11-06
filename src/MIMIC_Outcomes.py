@@ -100,7 +100,7 @@ def train_classifier(X_train, Y_train, X_val, Y_val,
         x = core.models.MultiSeqLinearModel(in_dim=input_dimension, out_dim=1, 
                     loss_fn=torch.nn.BCELoss(), 
                     init_seed=init_seed, n_epochs=500, 
-                    default_lr=0.1, batch_size=None, 
+                    default_lr=0.01, batch_size=205, 
                     shuffle_seed=shuffle_seed, silent=True,
                     shuffle=True) 
         x.fit(X_train, Y_train, X_val, Y_val)

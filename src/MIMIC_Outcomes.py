@@ -29,6 +29,14 @@ from tadat.pipeline import plots
 import tadat.core as core
 
 
+warnings.filterwarnings("ignore")
+sns.set(style="whitegrid")
+
+# %% [markdown]
+# ## Configs
+
+# %%
+
 # BASE_PATH = "/content/drive/My Drive/collab/MIMIC/"
 BASE_PATH = "/Users/samir/Dev/projects/MIMIC/MIMIC/"
 INPUT_PATH = BASE_PATH+"/DATA/input/"
@@ -38,8 +46,6 @@ TMP_PATH = BASE_PATH+"/DATA/processed/"
 
 TUNE_OUTPUT_PATH = BASE_PATH+"/DATA/results_fine/"
 TUNE_TMP_PATH = BASE_PATH+"/DATA/processed_fine/"
-
-
 
 #configs
 N_SEEDS=8
@@ -58,6 +64,8 @@ GROUPS = { "GENDER": ["M","F"],
 
 CLASSIFIER = 'sklearn'
 CLASSIFIER = 'torch'
+CLASSIFIER = 'mseq'
+CLINICALBERT = "emilyalsentzer/Bio_ClinicalBERT"
 
 
 # %%
@@ -82,7 +90,15 @@ def train_classifier(X_train, Y_train, X_val, Y_val,
                      init_seed, shuffle_seed=None, input_dimension=None):    
     if CLASSIFIER == "torch":        
         x = core.models.MyLinearModel(in_dim=input_dimension, out_dim=1, 
-                    loss_fn=torch.nn.BCEWithLogitsLoss(), 
+                    loss_fn=torch.nn.BCELoss(), 
+                    init_seed=init_seed, n_epochs=500, 
+                    default_lr=0.1, batch_size=None, 
+                    shuffle_seed=shuffle_seed, silent=True,
+                    shuffle=True) 
+        x.fit(X_train, Y_train, X_val, Y_val)
+    elif CLASSIFIER == "mseq":        
+        x = core.models.MultiSeqLinearModel(in_dim=input_dimension, out_dim=1, 
+                    loss_fn=torch.nn.BCELoss(), 
                     init_seed=init_seed, n_epochs=500, 
                     default_lr=0.1, batch_size=None, 
                     shuffle_seed=shuffle_seed, silent=True,
@@ -156,8 +172,7 @@ def tune_classifier(train_X, train_Y, val, feature_matrix, label_vocab,
         try:
             perf = res[metric]
         except KeyError:
-            raise KeyError("Metric {} Unknown".format(metric))
-        
+            raise KeyError("Metric {} Unknown".format(metric))        
         runs[seed] = perf
         if perf > best_perf:
             best_perf = perf
@@ -266,10 +281,10 @@ def get_features(data, vocab_size, feature_type, word_vectors=None):
     elif feature_type == "BOE-SUM": 
         X = core.features.BOE(data, word_vectors,"sum")
     elif feature_type == "BERT-POOL":
-        X =  core.transformer_encoders.transformer_encode_sequences(data, batchsize=64)        
+        X =  core.transformer_encoders.encode_sequences(data, batchsize=64)        
     elif feature_type == "BERT-CLS":
-        X =  core.transformer_encoders.transformer_encode_sequences(data, cls_features=True,
-                                                        batchsize=64)        
+        X =  core.transformer_encoders.encode_sequences(data, cls_features=True,
+                                                        batchsize=64)            
     elif feature_type == "MULTI-BERT-POOL":
         X =  core.transformer_encoders.encode_multi_sequences(data, 10, batchsize=32,
                                                          tmp_path=TMP_PATH)
@@ -278,6 +293,23 @@ def get_features(data, vocab_size, feature_type, word_vectors=None):
                                                          cls_features=True,
                                                          batchsize=32,
                                                          tmp_path=TMP_PATH)
+    elif feature_type == "CLINICALBERT-POOL":
+        tokenizer, encoder = core.transformer_encoders.get_encoder(CLINICALBERT)
+        X =  core.transformer_encoders.encode_sequences(data, batchsize=64, tokenizer=tokenizer,
+                                                                    encoder=encoder)        
+    elif feature_type == "CLINICALBERT-CLS":
+        tokenizer, encoder = core.transformer_encoders.get_encoder(CLINICALBERT)
+        X =  core.transformer_encoders.encode_sequences(data, cls_features=True,batchsize=64,
+                                                                    tokenizer=tokenizer, encoder=encoder)        
+    elif feature_type == "CLINICALMULTI-BERT-POOL":
+        tokenizer, encoder = core.transformer_encoders.get_encoder(CLINICALBERT)
+        X =  core.transformer_encoders.encode_multi_sequences(data, 10, batchsize=32,tmp_path=TMP_PATH,
+                                                              tokenizer=tokenizer, encoder=encoder)
+    elif feature_type == "CLINICALMULTI-BERT-CLS":
+        tokenizer, encoder = core.transformer_encoders.get_encoder(CLINICALBERT)
+        X =  core.transformer_encoders.encode_multi_sequences(data, 10, cls_features=True, 
+                                                                batchsize=32,tmp_path=TMP_PATH,
+                                                                tokenizer=tokenizer, encoder=encoder)
     else:
         raise NotImplementedError
     return X

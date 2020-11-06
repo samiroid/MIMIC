@@ -1,4 +1,6 @@
 
+
+# %%
 from collections import defaultdict
 from datetime import datetime
 import fnmatch
@@ -100,7 +102,7 @@ def train_classifier(X_train, Y_train, X_val, Y_val,
         x = core.models.MultiSeqLinearModel(in_dim=input_dimension, out_dim=1, 
                     loss_fn=torch.nn.BCELoss(), 
                     init_seed=init_seed, n_epochs=500, 
-                    default_lr=0.01, batch_size=205, 
+                    default_lr=0.1, batch_size=None, 
                     shuffle_seed=shuffle_seed, silent=True,
                     shuffle=True) 
         x.fit(X_train, Y_train, X_val, Y_val)
@@ -417,7 +419,7 @@ def run(data_path, dataset, features_path, feature_type, cache_path):
             curr_results = {}
             print(" > seed: {}".format(seed))                        
             model = train_classifier(train_X, train_Y,val_X, val_Y,  
-                                     input_dimension=train_X.shape[1],
+                                     input_dimension=train_X.shape[-1],
                                      init_seed=init_seed, 
                                      shuffle_seed=shuffle_seed)                                                      
             #test each subgroup (note thtat *all* is also a subgroup)

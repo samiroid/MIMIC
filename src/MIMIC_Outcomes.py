@@ -50,7 +50,7 @@ TUNE_OUTPUT_PATH = BASE_PATH+"/DATA/results_fine/"
 TUNE_TMP_PATH = BASE_PATH+"/DATA/processed_fine/"
 
 #configs
-N_SEEDS=8
+N_SEEDS=25
 N_VAL_SEEDS = 5
 N_VAL_RUNS = 25
 N_TASKS = 3
@@ -102,7 +102,7 @@ def train_classifier(X_train, Y_train, X_val, Y_val,
         x = core.models.MultiSeqLinearModel(in_dim=input_dimension, out_dim=1, 
                     loss_fn=torch.nn.BCELoss(), 
                     init_seed=init_seed, n_epochs=500, 
-                    default_lr=0.1, batch_size=None, 
+                    default_lr=0.01, batch_size=256, 
                     shuffle_seed=shuffle_seed, silent=True,
                     shuffle=True) 
         x.fit(X_train, Y_train, X_val, Y_val)

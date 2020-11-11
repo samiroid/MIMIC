@@ -1,6 +1,3 @@
-
-
-# %%
 from collections import defaultdict
 from datetime import datetime
 import fnmatch
@@ -49,6 +46,9 @@ TMP_PATH = BASE_PATH+"/DATA/processed/"
 TUNE_OUTPUT_PATH = BASE_PATH+"/DATA/results_fine/"
 TUNE_TMP_PATH = BASE_PATH+"/DATA/processed_fine/"
 
+GRID_OUTPUT_PATH = BASE_PATH+"/DATA/results_grid/"
+GRID_TMP_PATH = BASE_PATH+"/DATA/processed_grid/"
+
 #configs
 N_SEEDS=25
 N_VAL_SEEDS = 5
@@ -66,7 +66,7 @@ GROUPS = { "GENDER": ["M","F"],
 
 CLASSIFIER = 'sklearn'
 CLASSIFIER = 'torch'
-CLASSIFIER = 'mseq'
+# CLASSIFIER = 'mseq'
 CLINICALBERT = "emilyalsentzer/Bio_ClinicalBERT"
 
 
@@ -92,7 +92,7 @@ def train_classifier(X_train, Y_train, X_val, Y_val,
                      init_seed, shuffle_seed=None, input_dimension=None):    
     if CLASSIFIER == "torch":        
         x = core.models.MyLinearModel(in_dim=input_dimension, out_dim=1, 
-                    loss_fn=torch.nn.BCELoss(), 
+                    loss_fn=torch.nn.BCEWithLogitsLoss(), 
                     init_seed=init_seed, n_epochs=500, 
                     default_lr=0.1, batch_size=None, 
                     shuffle_seed=shuffle_seed, silent=True,
@@ -102,7 +102,7 @@ def train_classifier(X_train, Y_train, X_val, Y_val,
         x = core.models.MultiSeqLinearModel(in_dim=input_dimension, out_dim=1, 
                     loss_fn=torch.nn.BCELoss(), 
                     init_seed=init_seed, n_epochs=500, 
-                    default_lr=0.01, batch_size=256, 
+                    default_lr=0.1, batch_size=None, 
                     shuffle_seed=shuffle_seed, silent=True,
                     shuffle=True) 
         x.fit(X_train, Y_train, X_val, Y_val)
@@ -440,6 +440,9 @@ def run(data_path, dataset, features_path, feature_type, cache_path):
     df_results = results_to_df(incremental_results, test.keys())
     return df_results
 
+
+
+
 def tune_run(data_path, dataset, features_path, feature_type, cache_path, tune_metric, fairness=False):
     df_patients = pd.read_csv(features_path+"patients.csv", 
                               sep="\t", header=0).drop(columns=["TEXT"])
@@ -527,18 +530,21 @@ def results_to_df(results, subgroups):
 def run_analyses(data_path, dataset, features_path, feature_type, results_path, 
                  cache_path, clear_results=False, tune_metric=None, plot_metric="auroc", fairness=False):    
 
+    if not os.path.exists(results_path): os.makedirs(results_path)  
+
     if clear_results:
         clear_cache(cache_path, model=feature_type, dataset=dataset, ctype="res*")
-    if tune_metric:                              
-        df_results = tune_run(data_path, dataset, features_path, feature_type, cache_path, tune_metric, fairness)  
-        fname = "{}_{}_all_tuned_res.pkl".format(dataset, feature_type).lower()
+    if tune_metric: 
+        best_seeds = grid_search(data_path, dataset, features_path, feature_type, cache_path, tune_metric)  
+        df_results = test_seeds(data_path, dataset, features_path, feature_type, results_path, tune_metric, best_seeds)          
+        fname = "{}_{}_{}_all_tuned.csv".format(dataset, feature_type, tune_metric).lower()
+        df_results.to_csv(results_path+fname, index=False, header=True)    
     else:
         df_results = run(data_path, dataset, features_path, feature_type, cache_path)         
         fname = "{}_{}_all_res.pkl".format(dataset, feature_type).lower()
-        
-    #save results
-    if not os.path.exists(results_path): os.makedirs(results_path)  
-    write_cache(results_path+fname, df_results)
+        #save results    
+        write_cache(results_path+fname, df_results)    
+    
     if plot_metric:           
         plot_scatters(df_results, plot_metric, dataset)
         plot_deltas(df_results, plot_metric, dataset)
@@ -546,7 +552,7 @@ def run_analyses(data_path, dataset, features_path, feature_type, results_path,
 
 #Run All the tasks
 def run_tasks(data_path, tasks_fname, features_path, feature_type, results_path, cache_path,  
-             reset=False, tune_metric=None, plot_metric=None, mini_tasks=True, fairness=False):
+             reset=False, tune_metric=None, plot_metric=None, mini_tasks=True):
     #if reset delete the completed tasks file
     if reset: reset_tasks(cache_path)    
     with open(data_path+tasks_fname,"r") as fid:
@@ -561,7 +567,7 @@ def run_tasks(data_path, tasks_fname, features_path, feature_type, results_path,
             print("******** {} {} ********".format(task_name, dataset))      
             run_analyses(data_path, dataset, features_path, feature_type, results_path, 
                          cache_path, clear_results=False, tune_metric=tune_metric, 
-                         plot_metric=plot_metric, fairness=fairness)
+                         plot_metric=plot_metric)
             task_done(cache_path, dataset)
 
 def task_done(path,  task):
@@ -719,3 +725,211 @@ def plot_performances(tasks_fname, feature_type, results_path,
 #     g.set_xlabels(plot_metric + " gap")
     plt.tight_layout()
     plt.show()  
+
+
+# %%
+def grid_search(data_path, dataset, features_path, feature_type, cache_path, tune_metric, n_runs=300):
+    #read patients data
+    df_patients = pd.read_csv(features_path+"patients.csv", 
+                              sep="\t", header=0).drop(columns=["TEXT"])
+
+    df_train, df_test, df_val = read_dataset(data_path, dataset, df_patients)    
+    print("[train/test set size: {}/{}]".format(len(df_train), len(df_test)))
+    print("[grid searching with {} classifier]".format(CLASSIFIER))
+    subject_ids, feature_matrix = extract_features(feature_type, features_path)      
+    train, val, test, label_vocab = vectorize(df_train, df_val, df_test, subject_ids)
+    train_idx, train_Y = train["all"]
+    val_idx, val_Y = val["all"]
+    #slice the feature matrix to get the corresponding instances
+    train_X = feature_matrix[train_idx, :]    
+    val_X = feature_matrix[val_idx, :]    
+
+    init_randomizer = RandomState(1)
+    shuffle_randomizer = RandomState(2)    
+    results = []
+    dirname = os.path.dirname(cache_path)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    res_fname = cache_path+"/grid_{}_{}_{}.pkl".format(dataset, feature_type, tune_metric).lower()    
+    try:
+        df_results = pd.read_csv(res_fname)
+    except FileNotFoundError:
+        df_results = pd.DataFrame(columns = ["seed"] +  list(val.keys()))
+        df_results.to_csv(res_fname, index=False, header=True)        
+    groups = list(val.keys())
+    skip_seeds = set(df_results["seed"])
+    ##train/test classifier for each random seed pair
+    for j in range(n_runs):         
+        init_seed = init_randomizer.randint(10000)
+        shuffle_seed = shuffle_randomizer.randint(10000)
+        seed = "{}x{}".format(init_seed, shuffle_seed)        
+        if seed in skip_seeds:
+            print("skipped seed: {}".format(seed))
+            continue
+        curr_results = {"seed":seed}
+        print(" > seed: {}".format(seed))                        
+        model = train_classifier(train_X, train_Y,val_X, val_Y,  
+                                    input_dimension=train_X.shape[-1],
+                                    init_seed=init_seed, 
+                                    shuffle_seed=shuffle_seed)                                                                
+        ####### VALIDATION ########
+        
+        #test each subgroup (note thtat *all* is also a subgroup)
+        for subgroup in groups:                                
+            val_idx_sub, val_Y_sub = val[subgroup]                 
+            val_X_sub = feature_matrix[val_idx_sub, :]                
+            res_sub = evaluate_classifier(model, val_X_sub, val_Y_sub, 
+                                        label_vocab, feature_type, seed, subgroup)                
+            curr_results[subgroup]= res_sub[tune_metric]          
+
+        df_results = df_results.append(curr_results, ignore_index=True)
+        df_results.to_csv(res_fname, index=False, header=True)    
+        
+    #return the best seeds    
+    return get_best_seeds(df_results, groups)
+
+def get_best_seeds(df_grid, groups, k=20):    
+
+    groups.remove("all")    
+    for g in groups:
+        df_grid["delta_"+g] = (df_grid["all"] - df_grid[g]).abs()    
+    
+    df_grid["perf_avg"] = df_grid[[g for g in groups]].mean(axis=1)
+    df_grid["perf_std"] = df_grid[[g for g in groups]].std(axis=1)
+    df_grid["perf_avg_std"] = df_grid["perf_avg"] - df_grid["perf_std"]
+    df_grid["delta_avg"] = df_grid[["delta_"+g for g in groups]].mean(axis=1)
+    df_grid["perf_avg_delta"] = df_grid["perf_avg"] - df_grid["delta_avg"]
+    df_grid["all_avg_delta"] = df_grid["all"] - df_grid["delta_avg"]
+
+    z = int(len(df_grid)/k)+1
+    res = []
+    for i in range(z):
+        step = (i+1)*k
+        df = df_grid.iloc[:step,:]      
+        #get the seed with the minimum delta
+        best_df = df.iloc[df["delta_avg"].idxmin()]
+        seed = best_df["seed"]
+        perf = best_df["delta_avg"]
+        res.append({"seed":seed, "criterion":"delta_avg", "k":step, "val":perf })        
+        #get seeds with max criteria       
+
+        for crit in ["all", "perf_avg", "perf_avg_std", "perf_avg_delta",
+                     "all_avg_delta"]:        
+            best_df = df.iloc[df[crit].idxmax()]
+            seed = best_df["seed"]
+            perf = best_df[crit]
+            res.append({"seed":seed, "criterion":crit, "k":step, "val":perf })
+        
+        df_best_seeds = pd.DataFrame(res)       
+        
+    return df_best_seeds
+
+
+def test_seeds(data_path, dataset, features_path, feature_type, cache_path, tune_metric, best_seeds):
+    #read patients data
+    df_patients = pd.read_csv(features_path+"patients.csv", 
+                              sep="\t", header=0).drop(columns=["TEXT"])
+
+    df_train, df_test, df_val = read_dataset(data_path, dataset, df_patients)    
+    print("[train/test set size: {}/{}]".format(len(df_train), len(df_test)))
+    print("[testing seeds with {} classifier]".format(CLASSIFIER))
+    subject_ids, feature_matrix = extract_features(feature_type, features_path)      
+    train, val, test, label_vocab = vectorize(df_train, df_val, df_test, subject_ids)
+    train_idx, train_Y = train["all"]
+    val_idx, val_Y = val["all"]
+    #slice the feature matrix to get the corresponding instances
+    train_X = feature_matrix[train_idx, :]    
+    val_X = feature_matrix[val_idx, :]    
+    groups = list(val.keys())
+    dirname = os.path.dirname(cache_path)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    res_fname = cache_path+"/test_seeds_{}_{}_{}.pkl".format(dataset, feature_type, tune_metric).lower()                    
+    try:
+        df_results = pd.read_csv(res_fname)
+    except FileNotFoundError:
+        cols = ["seed"] +  groups + ["delta_"+g for g in groups]
+        df_results = pd.DataFrame(columns = cols)    
+    skip_seeds = set(df_results["seed"])    
+    for seed in set(best_seeds["seed"]):
+        if seed in skip_seeds:
+            print("skipped seed: {}".format(seed))
+            continue 
+        curr_results = {"seed":seed}
+        print(" > seed: {}".format(seed))                        
+        init_seed, shuffle_seed = seed.split("x") 
+        model = train_classifier(train_X, train_Y,val_X, val_Y,  
+                                    input_dimension=train_X.shape[-1],
+                                    init_seed=int(init_seed), 
+                                    shuffle_seed=int(shuffle_seed))
+        ####### TEST ########
+        
+        #test each subgroup (note thtat *all* is also a subgroup)
+        for subgroup in test.keys():                                
+            test_idx_sub, test_Y_sub = test[subgroup]                 
+            test_X_sub = feature_matrix[test_idx_sub, :]                
+            res_sub = evaluate_classifier(model, test_X_sub, test_Y_sub, 
+                                        label_vocab, feature_type, seed, subgroup)                
+            curr_results[subgroup]= res_sub[tune_metric]          
+
+        df_results = df_results.append(curr_results, ignore_index=True)
+    
+    for g in groups:
+        df_results["delta_"+g] = (df_results["all"] - df_results[g]).abs()    
+        
+    df_results["avg_delta_test"] = df_results[["delta_"+g for g in groups]].mean(axis=1)
+    df_results.to_csv(res_fname,index=False, header=True)
+    best_seeds = best_seeds.set_index("seed")
+    df_results = df_results.set_index("seed")
+    df_final = best_seeds.join(df_results, how="inner", on=["seed"])
+    df_final = df_final.sort_values(by=["criterion","k"])
+    return df_final
+
+def plot_gridsearch(cache_path, dataset, feature_type, tune_metric, title, delta=False):    
+    res_fname = cache_path+"{}_{}_{}_all_tuned.csv".format(dataset, feature_type, tune_metric).lower()              
+    df_results = pd.read_csv(res_fname)  
+    fig, ax = plt.subplots(1, 4,  figsize=(25,8), sharex=True, sharey=True)    
+    df_all = df_results[df_results["criterion"] == "all"]    
+    best_all = df_all.iloc[df_all["k"].idxmax()]["all"]    
+    cmap = plt.rcParams['axes.prop_cycle'].by_key()['color']
+#     criteria = ["all", "perf_avg", "perf_avg_std", "delta_avg", "perf_avg_delta"]
+    criteria = ["all", "perf_avg", "perf_avg_std", "perf_avg_delta"]
+    groups = ["all", "men", "women", "white", "black","asian", "hispanic"]
+    df_results["delta_avg"] = df_results[["delta_"+g for g in groups]].mean(axis=1)
+    if delta:
+        groups = ["delta_" + l for l in groups]
+    for i, criterion in enumerate(criteria):
+        df = df_results[df_results["criterion"] == criterion]    
+
+        ax[i].set_title(criterion)
+        if delta:
+            df.plot(x="k", y="delta_avg",   linewidth=4, ax=ax[i], c="gray")    
+        else:
+            ax[i].axhline(best_all, linewidth=2, c=cmap[0], linestyle="--")
+            df.plot(x="k", y="all",   linewidth=4, ax=ax[i])    
+        
+        for g in groups[1:]:
+            df.plot(x="k", y=g, style="o--", ax=ax[i])
+            
+        #place legend on the last subplot
+        if i == len(criteria)-1: 
+            ax[i].legend(bbox_to_anchor=(1.05, 0), loc='lower left', borderaxespad=0.)
+        else:
+            ax[i].get_legend().remove()
+    
+    plt.tight_layout()
+    plt.show()
+        
+def plot_gridsearches(tasks_fname, results_path, feature_type, 
+               mini_tasks=True, metric=None):
+    with open(tasks_fname,"r") as fid:        
+        for i,l in enumerate(fid):     
+            fname, task_name = l.strip("\n").split(",")
+            dataset = "mini-"+fname if mini_tasks else fname
+            print(dataset)
+            try:
+                plot_gridsearch(results_path, dataset, feature_type, metric, task_name)
+                plot_gridsearch(results_path, dataset, feature_type, metric, task_name, delta=True)
+            except FileNotFoundError:
+                print("Dataset {} not found".format(dataset))
+

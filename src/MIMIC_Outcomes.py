@@ -1,3 +1,4 @@
+
 from collections import defaultdict
 from datetime import datetime
 import fnmatch
@@ -50,7 +51,7 @@ GRID_OUTPUT_PATH = BASE_PATH+"/DATA/results_grid/"
 GRID_TMP_PATH = BASE_PATH+"/DATA/processed_grid/"
 
 #configs
-N_SEEDS=25
+N_SEEDS=4
 N_VAL_SEEDS = 5
 N_VAL_RUNS = 25
 N_TASKS = 3
@@ -152,73 +153,6 @@ def evaluate_classifier(model, X_test, Y_test,
     if res_path is not None:    
         core.helpers.save_results(res, res_path, sep="\t")
     return res
-
-def tune_classifier(train_X, train_Y, val, feature_matrix, label_vocab, 
-                    feature_type, seeds, metric):
-    best_model = None
-    best_perf = -1
-    best_seed = None
-    runs = {}    
-    #all seed pairs
-    val_idx, val_Y = val["all"]    
-    val_X = feature_matrix[val_idx, :] 
-    for init_seed, shuffle_seed in itertools.product(seeds,repeat=2):        
-        seed = "{}x{}".format(init_seed, shuffle_seed)    
-        model = train_classifier(train_X, train_Y,
-                                     val_X, val_Y, init_seed=init_seed,
-                                     shuffle_seed=shuffle_seed, 
-                                     input_dimension=train_X.shape[1])
-        
-        res = evaluate_classifier(model, val_X, val_Y, 
-                                  label_vocab, feature_type, seed, subgroup="val")
-        try:
-            perf = res[metric]
-        except KeyError:
-            raise KeyError("Metric {} Unknown".format(metric))        
-        runs[seed] = perf
-        if perf > best_perf:
-            best_perf = perf
-            best_model = model
-            best_seed = seed
-    return best_model, best_perf, best_seed, runs
-
-def tune_fair_classifier(train_X, train_Y, val, feature_matrix,
-                         label_vocab, feature_type, seeds, metric):
-    best_model = None
-    best_perf = -1
-    best_seed = None
-    runs = {}    
-    val_idx, val_Y = val["all"]    
-    val_X = feature_matrix[val_idx, :] 
-    #all seed pairs
-    for init_seed, shuffle_seed in itertools.product(seeds,repeat=2):                
-        seed = "{}x{}".format(init_seed, shuffle_seed)
-        model = train_classifier(train_X, train_Y,
-                                     val_X, val_Y, init_seed=init_seed,
-                                     shuffle_seed=shuffle_seed, 
-                                     input_dimension=train_X.shape[1])
-        
-        perfs_sub = []
-        for subgroup in val.keys():                                
-            val_idx_sub, val_Y_sub = val[subgroup]                 
-            val_X_sub = feature_matrix[val_idx_sub, :]                
-            res_sub = evaluate_classifier(model, val_X_sub, val_Y_sub, 
-                                          label_vocab, feature_type, seed, subgroup)                
-        
-            try:
-                perfs_sub.append(res_sub[metric])
-            except KeyError:
-                raise KeyError("Metric {} Unknown".format(metric))
-        #macro average subgroup performance
-        perf = np.mean(perfs_sub) - np.std(perfs_sub)
-        # std = np.std(perfs_sub)
-        # print("fair tuning {} | perf:{}/std:{}".format(seed, round(perf,3), round(std,3)))
-        runs[seed] = perf
-        if perf > best_perf:
-            best_perf = perf
-            best_model = copy.deepcopy(model)
-            best_seed = seed
-    return best_model, best_perf, best_seed, runs
 
 
 
@@ -389,7 +323,142 @@ def clear_cache(cache_path, model="*", dataset="*", group="*", ctype="*"):
             os.remove(cache_path+"/"+fname)
             print("cleared file: {}".format(fname))      
 
-def run(data_path, dataset, features_path, feature_type, cache_path):
+# def run(data_path, dataset, features_path, feature_type, cache_path):
+#     #read patients data
+#     df_patients = pd.read_csv(features_path+"patients.csv", 
+#                               sep="\t", header=0).drop(columns=["TEXT"])
+
+#     df_train, df_test, df_val = read_dataset(data_path, dataset, df_patients)
+    
+#     print("[train/test set size: {}/{}]".format(len(df_train), len(df_test)))
+#     print("[{} classifier]".format(CLASSIFIER))
+#     subject_ids, feature_matrix = extract_features(feature_type, features_path)      
+#     train, val, test, label_vocab = vectorize(df_train, df_val, df_test, subject_ids)
+#     train_idx, train_Y = train["all"]
+#     val_idx, val_Y = val["all"]
+#     #slice the feature matrix to get the corresponding instances
+#     train_X = feature_matrix[train_idx, :]    
+#     val_X = feature_matrix[val_idx, :]    
+#     random.seed(1) #ensure repeateable runs 
+#     random_seeds = random.sample(range(0, 10000), N_SEEDS)        
+#     incremental_results = {}     
+#     ##train/test classifier for each random seed pair
+#     for init_seed, shuffle_seed in itertools.product(random_seeds,repeat=2):        
+#         seed = "{}x{}".format(init_seed, shuffle_seed)
+#         res_fname = "{}_{}_res{}.pkl".format(dataset, feature_type, seed).lower()                
+#         #look for cached results
+#         curr_results = None
+#         if cache_path: curr_results = read_cache(cache_path+res_fname)              
+#         if not curr_results:
+#             curr_results = {}
+#             print(" > seed: {}".format(seed))                        
+#             model = train_classifier(train_X, train_Y,val_X, val_Y,  
+#                                      input_dimension=train_X.shape[-1],
+#                                      init_seed=init_seed, 
+#                                      shuffle_seed=shuffle_seed)                                                      
+#             #test each subgroup (note thtat *all* is also a subgroup)
+#             for subgroup in test.keys():                                
+#                 test_idx_sub, test_Y_sub = test[subgroup]                 
+#                 test_X_sub = feature_matrix[test_idx_sub, :]                
+#                 res_sub = evaluate_classifier(model, test_X_sub, test_Y_sub, 
+#                                             label_vocab, feature_type, seed, subgroup)                
+#                 curr_results[subgroup]= res_sub               
+#             #cache results
+#             if cache_path: write_cache(cache_path+res_fname, curr_results)                
+#         else:
+#             print("loaded cached results | seed: {}".format(seed))        
+        
+#         incremental_results = merge_results(curr_results, incremental_results, 
+#                                             list(test.keys()))
+#     #build dataframes 
+#     df_results = results_to_df(incremental_results, test.keys())
+#     return df_results
+
+
+
+
+
+# def tune_run(data_path, dataset, features_path, feature_type, cache_path, tune_metric, fairness=False):
+#     df_patients = pd.read_csv(features_path+"patients.csv", 
+#                               sep="\t", header=0).drop(columns=["TEXT"])
+#     df_train, df_test, df_val = read_dataset(data_path, dataset, df_patients)
+#     print("[train/test set size: {}/{}]".format(len(df_train), len(df_test)))
+#     print("[{} classifier]".format(CLASSIFIER))
+#     subject_ids, feature_matrix = extract_features(feature_type, features_path)
+#     train, val, test, label_vocab = vectorize(df_train, df_val, df_test, subject_ids)
+#     train_idx, train_Y = train["all"]
+#     #slice the feature matrix to get the corresponding instances
+#     train_X = feature_matrix[train_idx, :]    
+#     random.seed(1) #ensure repeateable runs 
+#     random_seeds = random.sample(range(0, 10000), N_VAL_RUNS*N_VAL_SEEDS)        
+#     incremental_results = {}     
+    
+#     for i in range(N_VAL_RUNS):        
+#         res_fname = "{}_{}_tuned_res{}.pkl".format(dataset, feature_type, i).lower()
+#         #look for cached results
+#         curr_results = None
+#         if cache_path: curr_results = read_cache(cache_path+res_fname)              
+#         if not curr_results:
+#             curr_results = {}
+#             seeds = random_seeds[i*N_VAL_SEEDS:(i+1)*N_VAL_SEEDS]
+#             if fairness:
+#                 model, perf, best_seed, val_run = tune_fair_classifier(train_X, train_Y, 
+#                                                               val, feature_matrix, label_vocab,
+#                                                               feature_type, seeds, tune_metric)               
+#             else:
+#                 model, perf, best_seed, val_run = tune_classifier(train_X, train_Y, 
+#                                                               val, feature_matrix, label_vocab,
+#                                                               feature_type, seeds, tune_metric)               
+
+#             print("[seed: {}| {}: {}]".format(best_seed, tune_metric, round(perf,3)))    
+                                                    
+#             #test each subgroup (note thtat *all* is also a subgroup)
+#             for subgroup in test.keys():                                
+#                 test_idx_sub, test_Y_sub = test[subgroup]                 
+#                 test_X_sub = feature_matrix[test_idx_sub, :]                
+#                 res_sub = evaluate_classifier(model, test_X_sub, test_Y_sub, 
+#                                             label_vocab, feature_type, best_seed, subgroup)                
+#                 curr_results[subgroup]= res_sub               
+#             #cache results
+#             if cache_path: write_cache(cache_path+res_fname, curr_results)                
+#         else:
+#             print("loaded cached results | run: {}".format(i))        
+        
+#         incremental_results = merge_results(curr_results, incremental_results, 
+#                                             list(test.keys()))
+#     #build dataframes 
+#     df_results = results_to_df(incremental_results, test.keys())
+#     return df_results
+
+# def merge_results(curr_results, results, subgroups):
+#     #append results    
+#     for subgroup in subgroups:                
+#         res = curr_results[subgroup]
+#         try:
+#             results[subgroup].append(res)            
+#         except KeyError:
+#             results[subgroup] = []
+#             results[subgroup].append(res)            
+#     return results
+
+# def results_to_df(results, subgroups):
+#     df_results = {}
+#     df_res = pd.DataFrame(results["all"])            
+#     for subgroup in subgroups:        
+#         # if subgroup == "all": continue
+#         df_res_g = pd.DataFrame(results[subgroup])        
+#         df_res_delta = df_res_g.sub(df_res.iloc[:,3:])
+#         # from pdb import set_trace; set_trace()
+#         df_res_delta["model"] = df_res_g["model"]
+#         df_res_delta["seed"] = df_res_g["seed"]
+#         df_res_delta["group"] = df_res_g["group"] 
+#         df_results[subgroup] = {}
+#         df_results[subgroup]["results"] = df_res_g
+#         df_results[subgroup]["delta"] = df_res_delta
+        
+#     return dict(df_results)
+
+def subsample_run(data_path, dataset, features_path, feature_type, cache_path, n_draws=10):
     #read patients data
     df_patients = pd.read_csv(features_path+"patients.csv", 
                               sep="\t", header=0).drop(columns=["TEXT"])
@@ -408,151 +477,64 @@ def run(data_path, dataset, features_path, feature_type, cache_path):
     random.seed(1) #ensure repeateable runs 
     random_seeds = random.sample(range(0, 10000), N_SEEDS)        
     incremental_results = {}     
-    ##train/test classifier for each random seed pair
+    sample_size = min([len(test[subgroup][0]) for subgroup in test.keys()])
+    print(sample_size)
+    ##train/test classifier for each random seed pair    
     for init_seed, shuffle_seed in itertools.product(random_seeds,repeat=2):        
         seed = "{}x{}".format(init_seed, shuffle_seed)
-        res_fname = "{}_{}_res{}.pkl".format(dataset, feature_type, seed).lower()                
-        #look for cached results
-        curr_results = None
-        if cache_path: curr_results = read_cache(cache_path+res_fname)              
-        if not curr_results:
-            curr_results = {}
-            print(" > seed: {}".format(seed))                        
-            model = train_classifier(train_X, train_Y,val_X, val_Y,  
-                                     input_dimension=train_X.shape[-1],
-                                     init_seed=init_seed, 
-                                     shuffle_seed=shuffle_seed)                                                      
-            #test each subgroup (note thtat *all* is also a subgroup)
+        res_fname = "{}_{}_res{}.pkl".format(dataset, feature_type, seed).lower()                        
+        curr_results = {}
+        print(" > seed: {}".format(seed))                        
+        model = train_classifier(train_X, train_Y,val_X, val_Y,  
+                                    input_dimension=train_X.shape[-1],
+                                    init_seed=init_seed, 
+                                    shuffle_seed=shuffle_seed)                                                      
+        for i in range(n_draws):
+            #evaluate different random samples of the data
+            #test each subgroup (note thtat *all* is also a subgroup)            
             for subgroup in test.keys():                                
-                test_idx_sub, test_Y_sub = test[subgroup]                 
-                test_X_sub = feature_matrix[test_idx_sub, :]                
-                res_sub = evaluate_classifier(model, test_X_sub, test_Y_sub, 
-                                            label_vocab, feature_type, seed, subgroup)                
-                curr_results[subgroup]= res_sub               
-            #cache results
-            if cache_path: write_cache(cache_path+res_fname, curr_results)                
-        else:
-            print("loaded cached results | seed: {}".format(seed))        
+                test_idx_sub, test_Y_sub = test[subgroup]            
+                test_Y_sub = np.array(test_Y_sub)
+                test_idx_sub = np.array(test_idx_sub)                    
+                random_sample = random.sample(range(len(test_idx_sub)), sample_size)                
+                test_Y_sub_sample = test_Y_sub[random_sample]
+                test_idx_sub_sample = test_idx_sub[random_sample]                    
+                test_X_sub_sample = feature_matrix[test_idx_sub_sample, :]                
+                res_sub = evaluate_classifier(model, test_X_sub_sample, test_Y_sub_sample, 
+                                            label_vocab, feature_type, seed+"x"+str(i), subgroup)                
+                curr_results[subgroup]= res_sub                       
         
-        incremental_results = merge_results(curr_results, incremental_results, 
+            incremental_results = merge_results(curr_results, incremental_results, 
                                             list(test.keys()))
     #build dataframes 
     df_results = results_to_df(incremental_results, test.keys())
     return df_results
-
-
-
-
-def tune_run(data_path, dataset, features_path, feature_type, cache_path, tune_metric, fairness=False):
-    df_patients = pd.read_csv(features_path+"patients.csv", 
-                              sep="\t", header=0).drop(columns=["TEXT"])
-    df_train, df_test, df_val = read_dataset(data_path, dataset, df_patients)
-    print("[train/test set size: {}/{}]".format(len(df_train), len(df_test)))
-    print("[{} classifier]".format(CLASSIFIER))
-    subject_ids, feature_matrix = extract_features(feature_type, features_path)
-    train, val, test, label_vocab = vectorize(df_train, df_val, df_test, subject_ids)
-    train_idx, train_Y = train["all"]
-    #slice the feature matrix to get the corresponding instances
-    train_X = feature_matrix[train_idx, :]    
-    random.seed(1) #ensure repeateable runs 
-    random_seeds = random.sample(range(0, 10000), N_VAL_RUNS*N_VAL_SEEDS)        
-    incremental_results = {}     
-    
-    for i in range(N_VAL_RUNS):        
-        res_fname = "{}_{}_tuned_res{}.pkl".format(dataset, feature_type, i).lower()
-        #look for cached results
-        curr_results = None
-        if cache_path: curr_results = read_cache(cache_path+res_fname)              
-        if not curr_results:
-            curr_results = {}
-            seeds = random_seeds[i*N_VAL_SEEDS:(i+1)*N_VAL_SEEDS]
-            if fairness:
-                model, perf, best_seed, val_run = tune_fair_classifier(train_X, train_Y, 
-                                                              val, feature_matrix, label_vocab,
-                                                              feature_type, seeds, tune_metric)               
-            else:
-                model, perf, best_seed, val_run = tune_classifier(train_X, train_Y, 
-                                                              val, feature_matrix, label_vocab,
-                                                              feature_type, seeds, tune_metric)               
-
-            print("[seed: {}| {}: {}]".format(best_seed, tune_metric, round(perf,3)))    
-                                                    
-            #test each subgroup (note thtat *all* is also a subgroup)
-            for subgroup in test.keys():                                
-                test_idx_sub, test_Y_sub = test[subgroup]                 
-                test_X_sub = feature_matrix[test_idx_sub, :]                
-                res_sub = evaluate_classifier(model, test_X_sub, test_Y_sub, 
-                                            label_vocab, feature_type, best_seed, subgroup)                
-                curr_results[subgroup]= res_sub               
-            #cache results
-            if cache_path: write_cache(cache_path+res_fname, curr_results)                
-        else:
-            print("loaded cached results | run: {}".format(i))        
-        
-        incremental_results = merge_results(curr_results, incremental_results, 
-                                            list(test.keys()))
-    #build dataframes 
-    df_results = results_to_df(incremental_results, test.keys())
-    return df_results
-
-def merge_results(curr_results, results, subgroups):
-    #append results    
-    for subgroup in subgroups:                
-        res = curr_results[subgroup]
-        try:
-            results[subgroup].append(res)            
-        except KeyError:
-            results[subgroup] = []
-            results[subgroup].append(res)            
-    return results
-
-def results_to_df(results, subgroups):
-    df_results = {}
-    df_res = pd.DataFrame(results["all"])            
-    for subgroup in subgroups:        
-        # if subgroup == "all": continue
-        df_res_g = pd.DataFrame(results[subgroup])        
-        df_res_delta = df_res_g.sub(df_res.iloc[:,3:])
-        # from pdb import set_trace; set_trace()
-        df_res_delta["model"] = df_res_g["model"]
-        df_res_delta["seed"] = df_res_g["seed"]
-        df_res_delta["group"] = df_res_g["group"] 
-        df_results[subgroup] = {}
-        df_results[subgroup]["results"] = df_res_g
-        df_results[subgroup]["delta"] = df_res_delta
-        
-    return dict(df_results)
 
 # %% [markdown]
 # # Analyses
 
 # %%
 def run_analyses(data_path, dataset, features_path, feature_type, results_path, 
-                 cache_path, clear_results=False, tune_metric=None, plot_metric="auroc", fairness=False):    
+                 cache_path, metric, tuning, clear_results=False):    
 
     if not os.path.exists(results_path): os.makedirs(results_path)  
-
+    if not os.path.exists(cache_path): os.makedirs(cache_path)  
     if clear_results:
         clear_cache(cache_path, model=feature_type, dataset=dataset, ctype="res*")
-    if tune_metric: 
-        best_seeds = grid_search(data_path, dataset, features_path, feature_type, cache_path, tune_metric)  
-        df_results = test_seeds(data_path, dataset, features_path, feature_type, results_path, tune_metric, best_seeds)          
-        fname = "{}_{}_{}_all_tuned.csv".format(dataset, feature_type, tune_metric).lower()
-        df_results.to_csv(results_path+fname, index=False, header=True)    
+    if tuning: 
+        best_seeds = grid_search(data_path, dataset, features_path, feature_type, cache_path, metric)  
+        df_results = test_seeds(data_path, dataset, features_path, feature_type, results_path, metric, best_seeds)          
+        fname = "{}_{}_{}_tuned.csv".format(dataset, feature_type, metric).lower()            
     else:
-        df_results = run(data_path, dataset, features_path, feature_type, cache_path)         
-        fname = "{}_{}_all_res.pkl".format(dataset, feature_type).lower()
-        #save results    
-        write_cache(results_path+fname, df_results)    
+        df_results = run2(data_path, dataset, features_path, feature_type, cache_path, metric)         
+        fname = "{}_{}_{}.csv".format(dataset, feature_type, metric).lower()
     
-    if plot_metric:           
-        plot_scatters(df_results, plot_metric, dataset)
-        plot_deltas(df_results, plot_metric, dataset)
+    df_results.to_csv(results_path+fname, index=False, header=True)
     return df_results               
 
 #Run All the tasks
 def run_tasks(data_path, tasks_fname, features_path, feature_type, results_path, cache_path,  
-             reset=False, tune_metric=None, plot_metric=None, mini_tasks=True):
+             metric, tuning=False, reset=False, mini_tasks=True):
     #if reset delete the completed tasks file
     if reset: reset_tasks(cache_path)    
     with open(data_path+tasks_fname,"r") as fid:
@@ -566,8 +548,7 @@ def run_tasks(data_path, tasks_fname, features_path, feature_type, results_path,
                 continue                        
             print("******** {} {} ********".format(task_name, dataset))      
             run_analyses(data_path, dataset, features_path, feature_type, results_path, 
-                         cache_path, clear_results=False, tune_metric=tune_metric, 
-                         plot_metric=plot_metric)
+                         cache_path, metric=metric, tuning=tuning, clear_results=False)
             task_done(cache_path, dataset)
 
 def task_done(path,  task):
@@ -606,55 +587,62 @@ def plot_densities(df, ax, title):
         except:
             pass
 
-def plot_scatters(results, metric, title):
-    n_rows=2
-    n_cols = 3    
-    fig, ax = plt.subplots(n_rows, n_cols,  figsize=(12,5), sharex=True, sharey=True)
-    #current coloramap
-    cmap = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    coords = list(itertools.product(range(n_rows),range(n_cols)))   
-    subgroups = list(results.keys())
-    subgroups.remove('all')
-    df = results['all']["results"]
-    for subgroup, col, coord in zip(subgroups, cmap, coords ):
-        df_delta = results[subgroup]["delta"]        
-        df_all = df.merge(df_delta, on=["model","seed"],
-                                      suffixes=[None, "_delta"])
-        #get absolute values for the deltas    
-        df_all[metric+"_delta"] = df_all[metric+"_delta"].abs() 
-        df_all.plot.scatter(x=metric,y=metric+"_delta",
-                            c=col, ax=ax[coord[0]][coord[1]])
-        ax[coord[0]][coord[1]].set_title(subgroup)
-        ax[coord[0]][coord[1]].set_ylabel("delta")
-    fig.suptitle(title, y=1.02)
-    plt.tight_layout()
+# def plot_scatters(results, metric, title):
+#     n_rows=2
+#     n_cols = 3    
+#     fig, ax = plt.subplots(n_rows, n_cols,  figsize=(12,5), sharex=True, sharey=True)
+#     #current coloramap
+#     cmap = plt.rcParams['axes.prop_cycle'].by_key()['color']
+#     coords = list(itertools.product(range(n_rows),range(n_cols)))   
+#     subgroups = list(results.keys())
+#     subgroups.remove('all')
+#     df = results['all']["results"]
+#     for subgroup, col, coord in zip(subgroups, cmap, coords ):
+#         df_delta = results[subgroup]["delta"]        
+#         df_all = df.merge(df_delta, on=["model","seed"],
+#                                       suffixes=[None, "_delta"])
+#         #get absolute values for the deltas    
+#         df_all[metric+"_delta"] = df_all[metric+"_delta"].abs() 
+#         df_all.plot.scatter(x=metric,y=metric+"_delta",
+#                             c=col, ax=ax[coord[0]][coord[1]])
+#         z = np.polyfit(df_all[metric], df_all[metric+"_delta"], 1)
+#         y_hat = np.poly1d(z)(df_all[metric])
+#         ax[coord[0]][coord[1]].plot(df_all[metric], y_hat, c=col, lw=1)
+#         ax[coord[0]][coord[1]].set_title(subgroup)
+#         ax[coord[0]][coord[1]].set_ylabel("delta")
+#     fig.suptitle(title, y=1.02)
+#     plt.tight_layout()
     
-def plot_deltas(results, metric, title):
-    df_delta = pd.concat([results[g]["delta"] for g in list(results.keys()) if g != "all"])    
-    #transform results into "long format"
-    df_delta_long = df_delta.melt(id_vars=["seed","model","group"], 
-                                  value_vars=[metric], 
-                                  var_name="metric", value_name="delta")
-    g = sns.catplot(x="group", y="delta", data=df_delta_long, 
-                    sharey=True,legend=False)    
-    lim = max(df_delta_long["delta"].abs()) + 0.05
+# def plot_deltas(results, metric, title):
+#     df_delta = pd.concat([results[g]["delta"] for g in list(results.keys()) if g != "all"])    
+#     #transform results into "long format"
+#     df_delta_long = df_delta.melt(id_vars=["seed","model","group"], 
+#                                   value_vars=[metric], 
+#                                   var_name="metric", value_name="delta")
+#     set_trace()
+#     g = sns.catplot(x="group", y="delta", data=df_delta_long, 
+#                     sharey=True,legend=False)    
+#     lim = max(df_delta_long["delta"].abs()) + 0.05
     
-    for ax in g.axes[0]:
-        ax.axhline(0, ls='--',c="r")
-    plt.suptitle(title, y=1.02)
-    plt.tight_layout()
-    plt.show()  
+#     for ax in g.axes[0]:
+#         ax.axhline(0, ls='--',c="r")
+#     plt.suptitle(title, y=1.02)
+#     plt.tight_layout()
+#     plt.show()  
 
-def plot_analyses(results_path, dataset, task_name, feature_type, plot_metric, tune_metric=None):
+def plot_analyses(results_path, dataset, task_name, feature_type, metric):
     if tune_metric:
-        fname = "{}_{}_all_tuned_res.pkl".format(dataset, feature_type).lower()
-    else:        
-        fname = "{}_{}_all_res.pkl".format(dataset, feature_type).lower()
-
-    df_results = read_cache(results_path+fname)
+        fname = "{}_{}_{}_tuned.csv".format(dataset, feature_type, metric).lower()            
+    else:
+        fname = "{}_{}_{}.csv".format(dataset, feature_type, metric).lower()   
+    
+    df_results = pd.read_csv(results_path+fname)
     if df_results:
-        plot_scatters(df_results, plot_metric, task_name)
-        plot_deltas(df_results, plot_metric, task_name)
+        df_minorities = get_minority_gaps(df_results)
+        plot_minority_gaps(df_minorities, task_name)
+        plot_minority_scatters(df_minorities, task_name)
+        # plot_scatters(df_results, plot_metric, task_name)
+        # plot_deltas(df_results, plot_metric, task_name)
 
 
 def plot_tasks(tasks_fname, feature_type, results_path, 
@@ -690,6 +678,7 @@ def plot_gaps(tasks_fname, feature_type, results_path,
                 fname = "{}_{}_all_res.pkl".format(dataset, feature_type).lower()
 
             df_results = read_cache(results_path+fname)    
+
             if df_results:
                 df_gaps = get_gaps(df_results, task_abv, plot_metric)
                 dfs.append(df_gaps)
@@ -788,6 +777,63 @@ def grid_search(data_path, dataset, features_path, feature_type, cache_path, tun
     #return the best seeds    
     return get_best_seeds(df_results, groups)
 
+def run2(data_path, dataset, features_path, feature_type, cache_path, metric, n_seeds=N_SEEDS):
+    #read patients data
+    df_patients = pd.read_csv(features_path+"patients.csv", 
+                              sep="\t", header=0).drop(columns=["TEXT"])
+
+    df_train, df_test, df_val = read_dataset(data_path, dataset, df_patients)
+    
+    print("[train/test set size: {}/{}]".format(len(df_train), len(df_test)))
+    print("[running 2 {} classifier]".format(CLASSIFIER))
+    subject_ids, feature_matrix = extract_features(feature_type, features_path)      
+    train, val, test, label_vocab = vectorize(df_train, df_val, df_test, subject_ids)
+    train_idx, train_Y = train["all"]
+    val_idx, val_Y = val["all"]
+    #slice the feature matrix to get the corresponding instances
+    train_X = feature_matrix[train_idx, :]    
+    val_X = feature_matrix[val_idx, :]    
+    
+    dirname = os.path.dirname(cache_path)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    res_fname = cache_path+"/seeds_{}_{}_{}.pkl".format(dataset, feature_type, metric).lower()    
+    try:
+        df_results = pd.read_csv(res_fname)
+    except FileNotFoundError:
+        df_results = pd.DataFrame(columns = ["seed"] +  list(val.keys()))
+        df_results.to_csv(res_fname, index=False, header=True)        
+    groups = list(val.keys())
+    skip_seeds = set(df_results["seed"])
+
+    random.seed(1) #ensure repeateable runs 
+    random_seeds = random.sample(range(0, 10000), n_seeds)        
+    incremental_results = {}     
+    ##train/test classifier for each random seed pair
+    for init_seed, shuffle_seed in itertools.product(random_seeds,repeat=2):        
+        seed = "{}x{}".format(init_seed, shuffle_seed)          
+        if seed in skip_seeds:
+            print("skipped seed: {}".format(seed))
+            continue
+        curr_results = {"seed":seed}
+        print(" > seed: {}".format(seed))                        
+        model = train_classifier(train_X, train_Y,val_X, val_Y,  
+                                    input_dimension=train_X.shape[-1],
+                                    init_seed=init_seed, 
+                                    shuffle_seed=shuffle_seed)                                                                                
+        #test each subgroup (note thtat *all* is also a subgroup)
+        for subgroup in groups:                                
+            test_idx_sub, test_Y_sub = test[subgroup]                 
+            test_X_sub = feature_matrix[test_idx_sub, :]                
+            res_sub = evaluate_classifier(model, test_X_sub, test_Y_sub, 
+                                        label_vocab, feature_type, seed, subgroup)                
+            curr_results[subgroup]= res_sub[metric]     
+
+        df_results = df_results.append(curr_results, ignore_index=True)
+        df_results.to_csv(res_fname, index=False, header=True)
+
+    return df_results
+
 def get_best_seeds(df_grid, groups, k=20):    
 
     groups.remove("all")    
@@ -825,7 +871,7 @@ def get_best_seeds(df_grid, groups, k=20):
     return df_best_seeds
 
 
-def test_seeds(data_path, dataset, features_path, feature_type, cache_path, tune_metric, best_seeds):
+def test_seeds(data_path, dataset, features_path, feature_type, cache_path, metric, best_seeds):
     #read patients data
     df_patients = pd.read_csv(features_path+"patients.csv", 
                               sep="\t", header=0).drop(columns=["TEXT"])
@@ -885,31 +931,40 @@ def test_seeds(data_path, dataset, features_path, feature_type, cache_path, tune
     df_final = df_final.sort_values(by=["criterion","k"])
     return df_final
 
-def plot_gridsearch(cache_path, dataset, feature_type, tune_metric, title, delta=False):    
+def plot_gridsearch(cache_path, dataset, feature_type, tune_metric, title, subgroups=False, delta=False):    
     res_fname = cache_path+"{}_{}_{}_all_tuned.csv".format(dataset, feature_type, tune_metric).lower()              
     df_results = pd.read_csv(res_fname)  
-    fig, ax = plt.subplots(1, 4,  figsize=(25,8), sharex=True, sharey=True)    
     df_all = df_results[df_results["criterion"] == "all"]    
-    best_all = df_all.iloc[df_all["k"].idxmax()]["all"]    
+    if delta:
+        last_all = df_all.iloc[df_all["k"].idxmax()]["avg_delta_test"]
+        best_all = df_all.iloc[df_all["avg_delta_test"].idxmin()]["avg_delta_test"]    
+    else:
+        last_all = df_all.iloc[df_all["k"].idxmax()]["all"]    
+        best_all = df_all.iloc[df_all["all"].idxmax()]["all"]    
     cmap = plt.rcParams['axes.prop_cycle'].by_key()['color']
 #     criteria = ["all", "perf_avg", "perf_avg_std", "delta_avg", "perf_avg_delta"]
-    criteria = ["all", "perf_avg", "perf_avg_std", "perf_avg_delta"]
+    criteria = ["all","perf_avg", "all_avg_delta", "perf_avg_delta"]
+    crit_labels = ["performance","subgroup avg", "performance - avg subgroup delta", "subgroup avg - avg subgroup delta"]
+#     set_trace()
     groups = ["all", "men", "women", "white", "black","asian", "hispanic"]
-    df_results["delta_avg"] = df_results[["delta_"+g for g in groups]].mean(axis=1)
+    fig, ax = plt.subplots(1, len(criteria),  figsize=(25,8), sharex=True, sharey=True)    
     if delta:
         groups = ["delta_" + l for l in groups]
-    for i, criterion in enumerate(criteria):
-        df = df_results[df_results["criterion"] == criterion]    
-
-        ax[i].set_title(criterion)
+    for i in range(len(criteria)):
+        df = df_results[df_results["criterion"] == criteria[i]]    
+        ax[i].set_title(crit_labels[i])
         if delta:
-            df.plot(x="k", y="delta_avg",   linewidth=4, ax=ax[i], c="gray")    
+            ax[i].axhline(best_all, linewidth=3, c="gray", linestyle="--")
+            ax[i].axhline(last_all, linewidth=2, c="gray", linestyle="--")
+            df.plot(x="k", y="avg_delta_test",   linewidth=4, ax=ax[i], c="gray")    
         else:
-            ax[i].axhline(best_all, linewidth=2, c=cmap[0], linestyle="--")
+            ax[i].axhline(best_all, linewidth=3, c=cmap[0], linestyle="--")
+            ax[i].axhline(last_all, linewidth=2, c=cmap[0], linestyle="--")
             df.plot(x="k", y="all",   linewidth=4, ax=ax[i])    
-        
-        for g in groups[1:]:
-            df.plot(x="k", y=g, style="o--", ax=ax[i])
+        #plot indiv
+        if subgroups:
+            for g in groups[1:]:
+                df.plot(x="k", y=g, ax=ax[i])
             
         #place legend on the last subplot
         if i == len(criteria)-1: 
@@ -921,15 +976,64 @@ def plot_gridsearch(cache_path, dataset, feature_type, tune_metric, title, delta
     plt.show()
         
 def plot_gridsearches(tasks_fname, results_path, feature_type, 
-               mini_tasks=True, metric=None):
+               mini_tasks=True, metric=None, subgroups=False):
     with open(tasks_fname,"r") as fid:        
         for i,l in enumerate(fid):     
             fname, task_name = l.strip("\n").split(",")
             dataset = "mini-"+fname if mini_tasks else fname
             print(dataset)
             try:
-                plot_gridsearch(results_path, dataset, feature_type, metric, task_name)
-                plot_gridsearch(results_path, dataset, feature_type, metric, task_name, delta=True)
+                plot_gridsearch(results_path, dataset, feature_type, metric, task_name, subgroups)
+                plot_gridsearch(results_path, dataset, feature_type, metric, task_name, subgroups, delta=True)
             except FileNotFoundError:
                 print("Dataset {} not found".format(dataset))
+
+def plot_minority_gaps(results, title):    
+    subgroups = ["women","black","asian","hispanic"]
+    df_delta_long = pd.melt(results, id_vars=["seed"], value_vars=subgroups, 
+                                                      value_name="gap", var_name="group")
+
+    g = sns.catplot(x="group", y="gap", data=df_delta_long, sharey=True,legend=False)       
+    
+    for ax in g.axes[0]:
+        ax.axhline(0, ls='--',c="r")
+    plt.suptitle(title, y=1.02)
+    plt.tight_layout()
+    plt.show()  
+    
+
+def plot_minority_scatters(results, title):
+    n_rows=2
+    n_cols = 2    
+    fig, ax = plt.subplots(n_rows, n_cols,  figsize=(12,5), sharex=True, sharey=True)
+    #current coloramap
+    cmap = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    coords = list(itertools.product(range(n_rows),range(n_cols)))   
+    subgroups = ["women","black","asian","hispanic"]
+    for subgroup, col, coord in zip(subgroups, cmap, coords ):        
+        results[subgroup] = results[subgroup].abs()         
+        results.plot.scatter(x="all",y=subgroup,
+                            c=col, ax=ax[coord[0]][coord[1]])
+        x = results["all"]
+        y = results[subgroup]
+        z = np.polyfit(x, y, 1)
+        y_hat = np.poly1d(z)(x)
+        ax[coord[0]][coord[1]].plot(x, y_hat, c=col, lw=1)
+        ax[coord[0]][coord[1]].set_title(subgroup)
+        ax[coord[0]][coord[1]].set_ylabel("gap")
+    fig.suptitle(title, y=1.02)
+    plt.tight_layout()
+
+
+def get_minority_gaps(results):
+    df = pd.DataFrame()
+    df["seed"] = results["seed"]
+    df["all"] = results["all"]
+    df["women"] = results["men"] - results["women"]    
+    #race
+    df["black"] = results["white"] - results["black"]
+    df["hispanic"] = results["white"] - results["hispanic"]
+    df["asian"] = results["white"] - results["asian"]
+
+    return df
 

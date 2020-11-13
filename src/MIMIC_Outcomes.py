@@ -631,11 +631,8 @@ def plot_densities(df, ax, title):
 #     plt.show()  
 
 def plot_analyses(results_path, dataset, task_name, feature_type, metric):
-    if tune_metric:
-        fname = "{}_{}_{}_tuned.csv".format(dataset, feature_type, metric).lower()            
-    else:
-        fname = "{}_{}_{}.csv".format(dataset, feature_type, metric).lower()   
-    
+
+    fname = "{}_{}_{}.csv".format(dataset, feature_type, metric).lower()       
     df_results = pd.read_csv(results_path+fname)
     if df_results:
         df_minorities = get_minority_gaps(df_results)
@@ -645,18 +642,17 @@ def plot_analyses(results_path, dataset, task_name, feature_type, metric):
         # plot_deltas(df_results, plot_metric, task_name)
 
 
-def plot_tasks(tasks_fname, feature_type, results_path, 
-               mini_tasks=True, plot_metric=None, tune_metric=None):
+def plot_tasks(tasks_fname, feature_type, results_path, metric, mini_tasks=True):
     with open(tasks_fname,"r") as fid:        
         for i,l in enumerate(fid):            
             fname, task_name = l.strip("\n").split(",")
             dataset = "mini-"+fname if mini_tasks else fname
-            plot_analyses(results_path, dataset, task_name, feature_type, plot_metric, tune_metric)
+            plot_analyses(results_path, dataset, task_name, feature_type, metric)
 
-    plot_gaps(tasks_fname, feature_type, results_path, mini_tasks=mini_tasks, 
-              plot_metric=plot_metric, tune_metric=tune_metric)
-    plot_performances(tasks_fname, feature_type, results_path, mini_tasks=mini_tasks, 
-              plot_metric=plot_metric, tune_metric=tune_metric)
+    # plot_gaps(tasks_fname, feature_type, results_path, mini_tasks=mini_tasks, 
+    #           plot_metric=plot_metric, tune_metric=tune_metric)
+    # plot_performances(tasks_fname, feature_type, results_path, mini_tasks=mini_tasks, 
+    #           plot_metric=plot_metric, tune_metric=tune_metric)
 
 def get_gaps(results, dataset_name, metric):    
     all_dfs = [results[g]["results"][["seed", metric]] for g in results.keys()]
@@ -890,7 +886,7 @@ def test_seeds(data_path, dataset, features_path, feature_type, cache_path, metr
     dirname = os.path.dirname(cache_path)
     if not os.path.exists(dirname):
         os.makedirs(dirname)
-    res_fname = cache_path+"/test_seeds_{}_{}_{}.pkl".format(dataset, feature_type, tune_metric).lower()                    
+    res_fname = cache_path+"/test_seeds_{}_{}_{}.pkl".format(dataset, feature_type, metric).lower()                    
     try:
         df_results = pd.read_csv(res_fname)
     except FileNotFoundError:
@@ -916,7 +912,7 @@ def test_seeds(data_path, dataset, features_path, feature_type, cache_path, metr
             test_X_sub = feature_matrix[test_idx_sub, :]                
             res_sub = evaluate_classifier(model, test_X_sub, test_Y_sub, 
                                         label_vocab, feature_type, seed, subgroup)                
-            curr_results[subgroup]= res_sub[tune_metric]          
+            curr_results[subgroup]= res_sub[metric]          
 
         df_results = df_results.append(curr_results, ignore_index=True)
     

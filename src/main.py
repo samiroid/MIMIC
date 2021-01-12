@@ -1,5 +1,5 @@
 import argparse
-from MIMIC_Outcomes import run_analyses, run_tasks, extract_features
+from randomseeds import run_analyses, run_tasks, extract_features
 
 def get_args():
     par = argparse.ArgumentParser(description="MIMIC runs")

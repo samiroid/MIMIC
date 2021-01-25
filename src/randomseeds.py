@@ -115,7 +115,7 @@ def train_classifier(X_train, Y_train, X_val, Y_val,
         x = core.models.MultiBERTSeq(in_dim=input_dimension, out_dim=1, 
                     loss_fn=torch.nn.BCELoss(), 
                     init_seed=init_seed, n_epochs=500, 
-                    default_lr=0.1, batch_size=None, 
+                    default_lr=0.01, batch_size=None, 
                     shuffle_seed=shuffle_seed, silent=True,
                     shuffle=True) 
         x.fit(X_train, Y_train, X_val, Y_val)
@@ -427,12 +427,16 @@ def run(data_path, dataset, features_path, feature_type, cache_path, metric, n_s
     #we can skip seeds that have already been evaluated
     skip_seeds = set([]) if clear_results else set(df_results["seed"])
     groups = list(val.keys())
-    random.seed(1) #ensure repeateable runs 
-    random_seeds = random.sample(range(0, 10000), n_seeds)        
-    incremental_results = {}     
+    init_randomizer = RandomState(1)
+    shuffle_randomizer = RandomState(2)    
+    # random.seed(1) #ensure repeateable runs 
+    # random_seeds = random.sample(range(0, 10000), n_seeds)        
     ##train/test classifier for each random seed pair
-    for init_seed, shuffle_seed in itertools.product(random_seeds,repeat=2):   
-        seed = "{}x{}".format(init_seed, shuffle_seed)          
+    # for init_seed, shuffle_seed in itertools.product(random_seeds,repeat=2):   
+    for j in range(n_seeds):         
+        init_seed = init_randomizer.randint(10000)
+        shuffle_seed = shuffle_randomizer.randint(10000)        
+        seed = "{}x{}".format(init_seed, shuffle_seed)  
         if seed in skip_seeds:
             print("skipped seed: {}".format(seed))
             continue

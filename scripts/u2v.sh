@@ -16,5 +16,5 @@ python $U2V_PATH"run.py" -input $CORPUS -emb $WORD_EMBEDDINGS -output $OUTPUT_PA
                         -epochs 20 \
                         -neg_samples 2 \
                         -margin 5 \
-			-device cpu \
-			-train
+			-device cpu 
+			

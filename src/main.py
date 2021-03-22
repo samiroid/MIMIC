@@ -6,7 +6,7 @@ def get_args():
     par.add_argument('-input_path', type=str, required=True, help='input path')
     par.add_argument('-output_path',type=str, required=True, help='output path')    
     par.add_argument('-feats_path', type=str, required=True, help='features path')
-    par.add_argument('-cache_path', type=str, help='tmp path')
+    # par.add_argument('-cache_path', type=str, help='tmp path')
     par.add_argument('-dataset', type=str, required=True, help='dataset')
     par.add_argument('-feature_type', type=str, required=True, help='feature type')
     par.add_argument('-metric', type=str, required=True, help='feature type')
@@ -26,16 +26,13 @@ if __name__ == "__main__":
     else:
         if "tasks" in args.dataset:
             print("[running tasks: {}]".format(args.dataset))
-            print("input:{}\nfeature_type:{}\noutput:{}\ncache:{}\nclear_results:{}\ntune:{}".format(args.input_path, args.feature_type, args.output_path, args.cache_path, args.clear_results, args.tune))
+            print("input:{}\nfeature_type:{}\noutput:{}\nclear_results:{}\n".format(args.input_path, args.feature_type, args.output_path, args.clear_results))
             print("mini_tasks:{}\nreset_tasks:{}".format(args.mini_tasks, args.reset_tasks))                 
 
-            run_tasks(args.input_path, args.dataset+".txt", args.feats_path, args.feature_type, 
-            args.output_path, args.cache_path, args.metric, args.tune, args.reset_tasks, args.mini_tasks)
+            run_tasks(args.input_path, args.dataset+".txt", args.feats_path, args.feature_type, args.output_path, args.metric, args.reset_tasks, args.mini_tasks)
         else:        
-            print("input:{}\ndataset:{}\nfeature_type:{}\noutput:{}\ncache:{}\nclear_results:{}\ntune:{}\n".format(args.input_path, args.dataset, args.feature_type, args.output_path, args.cache_path, args.clear_results, args.tune))
-            # run_analyses(data_path, dataset, features_path, feature_type, results_path, 
-            #     cache_path, args.metric, args.tune, clear_results=False)
+            print("input:{}\ndataset:{}\nfeature_type:{}\noutput:{}\nclear_results:{}\n".format(args.input_path, args.dataset, args.feature_type, args.output_path, args.clear_results))
+        #     run_analyses(data_path, dataset, features_path, feature_type, results_path, 
+        #         cache_path, args.metric,  clear_results=False)
 
-            run_analyses(args.input_path, args.dataset, args.feats_path, args.feature_type, 
-                        args.output_path, args.cache_path, args.metric, args.tune, 
-                        args.clear_results )
+            run_analyses(args.input_path, args.dataset, args.feats_path, args.feature_type, args.output_path, args.metric,args.clear_results)

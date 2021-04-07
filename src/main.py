@@ -15,6 +15,7 @@ def get_args():
     par.add_argument('-mini_tasks', action="store_true", help='use small datasets')
     par.add_argument('-reset_tasks', action="store_true", help='re-run all tasks')    
     par.add_argument('-feature_extraction', action="store_true", help='extract features')
+    par.add_argument('-subsample', action="store_true", help='extract features')
     
     return par.parse_args()  	
 
@@ -35,4 +36,4 @@ if __name__ == "__main__":
         #     run_analyses(data_path, dataset, features_path, feature_type, results_path, 
         #         cache_path, args.metric,  clear_results=False)
 
-            run_analyses(args.input_path, args.dataset, args.feats_path, args.feature_type, args.output_path, args.metric,args.clear_results)
+            run_analyses(args.input_path, args.dataset, args.feats_path, args.feature_type, args.output_path, args.metric,args.clear_results, subsample=args.subsample)

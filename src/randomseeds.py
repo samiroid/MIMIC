@@ -1,4 +1,3 @@
-
 from collections import defaultdict
 from datetime import datetime
 import fnmatch
@@ -33,10 +32,12 @@ import tadat
 warnings.filterwarnings("ignore")
 sns.set(style="whitegrid")
 
-# %% [markdown]
+
 # ## Configs
 
-# %%
+# In[9]:
+
+
 
 # BASE_PATH = "/content/drive/My Drive/collab/MIMIC/"
 BASE_PATH = "/Users/samir/Dev/projects/MIMIC/MIMIC_random_seeds/MIMIC/"
@@ -67,12 +68,14 @@ GROUPS = { "GENDER": ["M","F"],
 }
 
 CLASSIFIER = 'sklearn'
-# CLASSIFIER = 'torch'
+CLASSIFIER = 'torch'
 CLASSIFIER = 'mseq'
 CLINICALBERT = "emilyalsentzer/Bio_ClinicalBERT"
 
 
-# %%
+# In[10]:
+
+
 
 SMALL_SIZE = 18
 MEDIUM_SIZE = 20
@@ -87,10 +90,12 @@ plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 plt.rc('text', usetex = True)
 
-# %% [markdown]
+
 # # Modeling 
 
-# %%
+# In[11]:
+
+
 def train_classifier(X_train, Y_train, X_val, Y_val, 
                      init_seed, shuffle_seed=None, input_dimension=None):    
     """ train a classifier
@@ -342,10 +347,12 @@ def extract_features(feature_type, path):
                     [subject_ids, X_feats])
     return subject_ids, X_feats
 
-# %% [markdown]
+
 # # Run
 
-# %%
+# In[20]:
+
+
 def read_dataset(path, dataset_name, df_patients):    
     
     """ read dataset        
@@ -403,81 +410,6 @@ def write_cache(path, o):
     with open(path, "wb") as fo:
         pickle.dump(o, fo)
 
-def old_run(data_path, dataset, features_path, feature_type, cache_path, metric, n_seeds=N_SEEDS, clear_results=False):
-    """ 
-        train classifiers with different random seeds and compare the performance over each demographic subgroup
-
-        data_path: path to the data
-        dataset: dataset to be evaluted
-        features_path: path to the features
-        feature_type: type of feature (e.g bag of words, BERT)
-        cache_path: cache path 
-        metric: evaluation metric
-        n_seeds: number of seeds
-
-        returns: results for each subgroup
-    """
-    #read patients data
-    df_patients = pd.read_csv(features_path+"patients.csv", 
-                              sep="\t", header=0).drop(columns=["TEXT"])
-    #read dataset
-    df_train, df_test, df_val = read_dataset(data_path, dataset, df_patients)
-    
-    print("[train/test set size: {}/{}]".format(len(df_train), len(df_test)))
-    print("[running {} classifier]".format(CLASSIFIER))
-    #extract features
-    subject_ids, feature_matrix = extract_features(feature_type, features_path)      
-    train, val, test, label_vocab = vectorize(df_train, df_val, df_test, subject_ids)
-    train_idx, train_Y = train["all"]
-    val_idx, val_Y = val["all"]
-    #slice the feature matrix to get the corresponding instances
-    train_X = feature_matrix[train_idx, :]    
-    val_X = feature_matrix[val_idx, :]    
-    #create the cache directory if it does not exist
-    dirname = os.path.dirname(cache_path)
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
-    #try to open a cached results file or create a new one if it does not exist
-    res_fname = cache_path+"/cache_{}_{}_{}.pkl".format(dataset, feature_type, metric).lower()    
-    try:
-        df_results = pd.read_csv(res_fname)
-    except FileNotFoundError:
-        df_results = pd.DataFrame(columns = ["seed"] +  list(val.keys()))
-        df_results.to_csv(res_fname, index=False, header=True)        
-    #we can skip seeds that have already been evaluated
-    skip_seeds = set([]) if clear_results else set(df_results["seed"])
-    groups = list(val.keys())
-    init_randomizer = RandomState(1)
-    shuffle_randomizer = RandomState(2)    
-    # random.seed(1) #ensure repeateable runs 
-    # random_seeds = random.sample(range(0, 10000), n_seeds)        
-    ##train/test classifier for each random seed pair
-    # for init_seed, shuffle_seed in itertools.product(random_seeds,repeat=2):   
-    for j in range(n_seeds):         
-        init_seed = init_randomizer.randint(10000)
-        shuffle_seed = shuffle_randomizer.randint(10000)        
-        seed = "{}x{}".format(init_seed, shuffle_seed)  
-        if seed in skip_seeds:
-            print("skipped seed: {}".format(seed))
-            continue
-        curr_results = {"seed":seed}
-        print(" > seed: {}".format(seed))                        
-        model = train_classifier(train_X, train_Y,val_X, val_Y,  
-                                    input_dimension=train_X.shape[-1],
-                                    init_seed=init_seed, 
-                                    shuffle_seed=shuffle_seed)                                                                                
-        #test each subgroup (note thtat *all* is also a subgroup)
-        for subgroup in groups:                                
-            test_idx_sub, test_Y_sub = test[subgroup]                 
-            test_X_sub = feature_matrix[test_idx_sub, :]                
-            res_sub = evaluate_classifier(model, test_X_sub, test_Y_sub, 
-                                        label_vocab, feature_type, seed, subgroup)                
-            curr_results[subgroup]= res_sub[metric]     
-        #save results
-        df_results = df_results.append(curr_results, ignore_index=True)
-        df_results.to_csv(res_fname, index=False, header=True)
-
-    return df_results
 
 def run(data_path, dataset, features_path, feature_type, results_path, metric, n_seeds=N_SEEDS, clear_results=False):
     """ 
@@ -496,6 +428,7 @@ def run(data_path, dataset, features_path, feature_type, results_path, metric, n
     #read patients data
     df_patients = pd.read_csv(features_path+"patients.csv", 
                               sep="\t", header=0).drop(columns=["TEXT"])
+
     #read dataset
     df_train, df_test, df_val = read_dataset(data_path, dataset, df_patients)
     
@@ -561,15 +494,156 @@ def run(data_path, dataset, features_path, feature_type, results_path, metric, n
         df_results = df_results.append(test_results, ignore_index=True)
         df_results = df_results.append(val_results, ignore_index=True)
         df_results.to_csv(res_fname, index=False, header=True)
+        
+    return df_results
+
+def run_subsample(data_path, dataset, features_path, feature_type, results_path, metric, 
+                  n_seeds=N_SEEDS, clear_results=False, n_draws=5):
+    """ 
+        train classifiers with different random seeds and compare the performance over each demographic subgroup
+
+        data_path: path to the data
+        dataset: dataset to be evaluted
+        features_path: path to the features
+        feature_type: type of feature (e.g bag of words, BERT)
+        results_path: cache path 
+        metric: evaluation metric
+        n_seeds: number of seeds
+
+        returns: results for each subgroup
+    """
+    #read patients data
+    df_patients = pd.read_csv(features_path+"patients.csv", 
+                              sep="\t", header=0).drop(columns=["TEXT"])
+
+    #read dataset
+    df_train, df_test, df_val = read_dataset(data_path, dataset, df_patients)
+    
+    print("[train/test set size: {}/{}]".format(len(df_train), len(df_test)))
+    print("[SUBSAMPLE running {} classifier]".format(CLASSIFIER))
+    #extract features
+    subject_ids, feature_matrix = extract_features(feature_type, features_path)      
+    train, val, test, label_vocab = vectorize(df_train, df_val, df_test, subject_ids)
+    sample_size = min([len(test[subgroup][0]) for subgroup in test.keys()])
+#     sample_size = len(test[sample_size_group][0])
+    print(f"[sample size:{sample_size}]")
+    
+    train_idx, train_Y = train["all"]
+    val_idx, val_Y = val["all"]
+    #slice the feature matrix to get the corresponding instances
+    train_X = feature_matrix[train_idx, :]    
+    val_X = feature_matrix[val_idx, :]    
+    #create the cache directory if it does not exist
+    dirname = os.path.dirname(results_path)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    #try to open a cached results file or create a new one if it does not exist
+    res_fname = results_path+"/{}_{}_{}.csv".format(dataset, feature_type, metric).lower()    
+    try:
+        df_results = pd.read_csv(res_fname)
+    except FileNotFoundError:
+        df_results = pd.DataFrame(columns = ["seed","data"] +  list(val.keys()))
+        df_results.to_csv(res_fname, index=False, header=True)        
+    #we can skip seeds that have already been evaluated
+    skip_seeds = set([]) if clear_results else set(df_results["seed"])
+    groups = list(val.keys())
+    init_randomizer = RandomState(1)
+    shuffle_randomizer = RandomState(2)    
+    # random.seed(1) #ensure repeateable runs 
+    # random_seeds = random.sample(range(0, 10000), n_seeds)        
+    ##train/test classifier for each random seed pair
+    # for init_seed, shuffle_seed in itertools.product(random_seeds,repeat=2):   
+    for j in range(n_seeds):         
+        init_seed = init_randomizer.randint(10000)
+        shuffle_seed = shuffle_randomizer.randint(10000)        
+        seed = "{}x{}".format(init_seed, shuffle_seed)  
+        print(" > seed: {}".format(seed))                        
+        
+        if seed in skip_seeds:
+            print("skipped seed: {}".format(seed))
+            continue
+
+        model = train_classifier(train_X, train_Y,val_X, val_Y,  
+                                    input_dimension=train_X.shape[-1],
+                                    init_seed=init_seed, 
+                                    shuffle_seed=shuffle_seed)                                                                                
+        for i in range(n_draws):
+            s_seed = seed+"_"+str(i)
+            test_results = {"seed":s_seed, "data":"test"}
+            #test each subgroup (note thtat *all* is also a subgroup)
+            for subgroup in groups:                                
+#                 test_idx_sub, test_Y_sub = test[subgroup]                 
+#                 test_X_sub = feature_matrix[test_idx_sub, :]              
+
+                test_idx_sub, test_Y_sub = test[subgroup]                            
+                if subgroup == "all":
+                    test_X_sub_sample = feature_matrix[test_idx_sub, :]     
+                    test_Y_sub_sample = test_Y_sub
+                else:
+#                     test_idx_sub, test_Y_sub = test[subgroup]            
+                    test_Y_sub = np.array(test_Y_sub)
+                    test_idx_sub = np.array(test_idx_sub)              
+                    norm_sample_size = min(len(test_idx_sub), sample_size)
+                    random_sample = random.sample(range(len(test_idx_sub)), norm_sample_size)                
+                    test_Y_sub_sample = test_Y_sub[random_sample]
+                    test_idx_sub_sample = test_idx_sub[random_sample]                    
+                    test_X_sub_sample = feature_matrix[test_idx_sub_sample, :]                
+                
+                test_res_sub = evaluate_classifier(model, test_X_sub_sample, test_Y_sub_sample, 
+                                            label_vocab, feature_type, s_seed, subgroup)                
+                test_results[subgroup]= test_res_sub[metric]     
 
 
+
+            #save results
+            df_results = df_results.append(test_results, ignore_index=True)
+#             df_results = df_results.append(val_results, ignore_index=True)
+            df_results.to_csv(res_fname, index=False, header=True)
+        
     return df_results
 
 
-# %% [markdown]
+
+
+
+def test_demographic_dist(features_path, data_path, part):
+    #read patients data
+    res = []
+    demos = ["GENDER", "ETHNICITY"]
+    with open(data_path+"/tasks.txt","r") as fid:    
+        for i,l in enumerate(fid):                        
+            task_abv, task_name = l.strip("\n").split(",")                        
+            #read dataset
+            print(task_abv)
+            df_patients = pd.read_csv(features_path+"patients.csv", 
+                              sep="\t", header=0).drop(columns=["TEXT"])
+            df_train, df_test, df_val = read_dataset(data_path, task_abv, df_patients)
+            
+            if part == "train":
+                df = df_train
+            elif part == "test":
+                df = df_test
+            elif part == "val":
+                df = df_val
+            else:
+                raise NotImplementedError
+
+            r={"task":task_abv,"data":part}
+            for d in demos:
+                dist = df.groupby(d).size() 
+                for k,v in dist.iteritems():
+#                     print(f"{k} :: {v}")
+                    r[k]=v
+            res+=[r]
+    df_final = pd.DataFrame(res)
+    return df_final
+
+
 # # Grid Search
 
-# %%
+# In[13]:
+
+
 MAX_CRITERIA = [
             "performance", 
             "subgroup avg", 
@@ -613,7 +687,7 @@ def get_best_seed(df_seeds, groups="both"):
     for g in subgroups:
         df_seeds["val_delta_"+g] = (df_seeds["all"] - df_seeds[g]).abs()    
 
-    df_seeds = df_seeds.reset_index()
+    df_seeds = df_seeds.reset_index(drop=True)
     df_seeds["performance"] = df_seeds["all"] 
     df_seeds["subgroup avg"] = df_seeds[[g for g in subgroups]].mean(axis=1)
     df_seeds["subgroup std"] = df_seeds[[g for g in subgroups]].std(axis=1)
@@ -650,17 +724,17 @@ def get_best_seed(df_seeds, groups="both"):
             
     df_best_seeds = pd.DataFrame(res)               
 
-    return df_best_seeds
+    return df_seeds, df_best_seeds
 
 def search_analyses(results_path, dataset, feature_type, metric, groups="both", k=50):
     
-    fname = "{}_{}_{}.csv".format(dataset, feature_type, metric).lower()       
+    fname = "{}{}_{}_{}.csv".format(results_path,dataset, feature_type, metric).lower()       
     try:
-        df_results = pd.read_csv(results_path+fname) 
+        df_results = pd.read_csv(fname) 
         df_results_val = df_results[df_results["data"] == "val"].reset_index()
         df_results_test = df_results[df_results["data"] == "test"].reset_index()
 
-        bs = get_best_seed(df_results_val, groups)   
+        _, bs = get_best_seed(df_results_val, groups)   
         bs = bs.set_index("seed")
         df_results_test = df_results_test.set_index("seed")
         z = pd.merge(bs, df_results_test, how="left", on="seed")         
@@ -688,12 +762,12 @@ def search_analyse_plot(results_path, dataset, task_name, feature_type, metric, 
         df_res = search_analyses(results_path, dataset, feature_type, metric=metric, groups=g, k=k)
         df_res = df_res.round(3)
         df_res = df_res[df_res["criterion"].isin(CRITERIA)]
-        df_res.plot(x="criterion", y=y, kind="bar", rot=45, ax=ax[i], ylim=[0.8, 1.05])
+        df_res.plot(x="criterion", y=y, kind="bar", rot=45, ax=ax[i], ylim=[0.5, 1.05])
 #         plot_search(df_res,  f"{g}" , subgroups=plot_subgroups, ax=ax[i])
-        all_scores = list(df_res["all"])
-        delta_scores = list(df_res["test delta avg"])
-        gaps = list(df_res["test gap"])
-        labels = [str(a) + "\n" + str(d) + "\n" + str(g) for a,d,g in zip(all_scores, delta_scores, gaps)]
+        all_scores = [round((x*100),3) for x in list(df_res["all"])]
+        delta_scores = [round((x*100),3) for x in list(df_res["test delta avg"])]
+        gaps = [round((x*100),3) for x in list(df_res["test gap"])]
+        labels = [str(a) + "\%\n" + str(d) + "\%\n" + str(g) +"\%" for a,d,g in zip(all_scores, delta_scores, gaps)]
         rects = ax[i].patches
         leg = "all\n avg delta\n gap"
         
@@ -722,14 +796,90 @@ def all_search_analyse_plot(data_path, tasks_fname, results_path, feature_type, 
                                 metric, k=k, plot_subgroups=plot_subgroups)
 
 
-# %%
-def find_similar_seeds(df_results, epsilon=0.01):    
-    max_val = df_results["all"].max()    
-    df_similar = df_results[df_results["all"] >= (max_val-epsilon)] 
+def search_analyse_plot_curves(results_path, dataset, task_name, feature_type, metric, k=50, plot_subgroups=False):
+    fig, ax = plt.subplots(len(CRITERIA)+1, 3,  figsize=(20,35), sharex="row", sharey="row")    
+    
+    fname = "{}{}_{}_{}.csv".format(results_path,dataset, feature_type, "roc_curve").lower()       
+    df_curves = pd.read_csv(fname)
+    df_curves = df_curves[df_curves["data"] == "test"]
+    df_curves = df_curves.drop_duplicates(subset=["seed"])
+    df_curves = df_curves.set_index("seed")
+
+    y = ["all"] 
+    if plot_subgroups:
+        y+= ["men", "women", "white", "black","asian", "hispanic"]
+    else:
+        y+= ["test delta avg"]
+    for i,g in enumerate(["both", "gender", "race"]):
+        df_res = search_analyses(results_path, dataset, feature_type, metric=metric, groups=g, k=k)
+        df_res = df_res.round(3)
+        df_res = df_res[df_res["criterion"].isin(CRITERIA)]
+        df_res.plot(x="criterion", y=y, kind="bar", rot=45, ax=ax[0][i], ylim=[0.5, 1.05])        
+        
+        all_scores = [round((x*100),3) for x in list(df_res["all"])]
+        delta_scores = [round((x*100),3) for x in list(df_res["test delta avg"])]
+        gaps = [round((x*100),3) for x in list(df_res["test gap"])]
+        labels = [str(a) + "\%\n" + str(d) + "\%\n" + str(g) +"\%" for a,d,g in zip(all_scores, delta_scores, gaps)]
+        rects = ax[0][i].patches
+        leg = "all\n avg delta\n gap"
+        
+        if i == 0:
+            ax[0][i].text(-1, 1 + 0.01, leg,ha='center', va='bottom', fontsize="small")
+        
+        for rect, label in zip(rects, labels):
+            height = rect.get_height()
+            ax[0][i].text(rect.get_x() + rect.get_width() / 2, 1 + 0.01, label,
+                    ha='center', va='bottom', fontsize="small")
+        if i == 2:
+            ax[0][i].legend(loc='lower left', bbox_to_anchor=(1.05, 0))
+        else:
+            ax[0][i].get_legend().remove()
+        ax[0][i].set_title(f"{g}", y=1.1)
+
+        for j,crit in enumerate(CRITERIA):
+            z = pd.merge(df_res[["criterion"]], df_curves, how="left", on="seed")
+            plot_rocs_crit(z, crit, ax[j+1][i])
+        
+    plt.tight_layout()    
+    plt.suptitle(f"{task_name}" , y=1.02)
+    plt.show()
+        
+def plot_rocs_crit(df, crit, ax):    
+#     fig2, ax2 = plt.subplots(1, 1)
+
+    #current coloramap
+    cmap = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+    x=[0,1]
+    y=[0,1]
+
+    ax.plot(x, y,"k:")
+    subgroups = ["men","women","white","black","asian","hispanic"]        
+    results = df[df["criterion"] == crit]
+    
+    for subgroup, col in zip(subgroups, cmap ):                
+#         print(results[subgroup])
+        z = results[subgroup].item()
+#         tpr, fpr, tr = z.split("::")
+        tpr, fpr = z.split("::")
+        tpr = np.array(ast.literal_eval(tpr))
+        fpr = np.array(ast.literal_eval(fpr))
+        ax.plot(tpr,fpr, c=col, label=subgroup)
+    ax.set_title(crit)
+    ax.legend(loc='lower right')
+#     plt.show()
+
+
+# In[14]:
+
+
+def find_similar_seeds(df_results, metric="all", epsilon=0.01):    
+    max_val = df_results[metric].max()    
+    df_similar = df_results[df_results[metric] >= (max_val-epsilon)] 
 #     df_similar = df_results[df_results[metric] >= (perf-epsilon)] 
     return df_similar
 
-def underspecification(results_path, dataset, feature_type, metric):
+def underspecification(results_path, dataset, feature_type, metric, task_name):
     
     fname = "{}_{}_{}.csv".format(dataset, feature_type, metric).lower()       
     try:
@@ -737,36 +887,142 @@ def underspecification(results_path, dataset, feature_type, metric):
         df_val = df_results[df_results["data"] == "val"]
         df_test = df_results[df_results["data"] == "test"]
         #seeds with similar validation performance
-        df_similar = find_similar_seeds(df_val)
+        df_similar = find_similar_seeds(df_val, "all")
         #correspoding test performances
         df_test = df_test[df_test["seed"].isin(df_similar["seed"].tolist())]
 
-        plot_deltas(df_test, dataset)
-#         return df_test
+        plot_deltas(df_test, task_name)
+        return df_test
     except FileNotFoundError:
         print("{} not found...".format(fname))        
         return None
 
-def all_underspecification(data_path, tasks_fname, results_path, feature_type, metric):
-    with open(data_path+"/"+tasks_fname,"r") as fid:        
+# def all_underspecification(data_path, tasks_fname, results_path, feature_type, metric):
+#     with open(data_path+"/"+tasks_fname,"r") as fid:        
+#         for i,l in enumerate(fid):            
+#             task_abv, task_name = l.strip("\n").split(",")            
+#             underspecification(results_path, task_abv, feature_type, metric,task_name)
+#             plt.show()      
+#             plt.savefig("plots/underspec_{}.pdf".format(task_abv.lower()),dpi=300, bbox_inches='tight')
+            
+            
+def all_underspecification(tasks_fname, feature_type, results_path, metric, mini_tasks=True):
+    dfs = []
+    with open(tasks_fname,"r") as fid:                
         for i,l in enumerate(fid):            
-            task_abv, task_name = l.strip("\n").split(",")            
-            under(results_path, task_abv, feature_type, metric)
-#             plt.savefig("underspec_{}.pdf".format(task_abv.lower()),dpi=300, bbox_inches='tight')
-            
-            
-            
+            task_abv, task_name = l.strip("\n").split(",")
+            dataset = "mini-"+task_abv if mini_tasks else task_abv
+            fname = "{}_{}_{}.csv".format(dataset, feature_type, metric).lower()  
+            df_results = underspecification(results_path, task_abv, feature_type, metric,task_name)
+            plt.show()      
+            plt.savefig("plots/underspec_{}.pdf".format(task_abv.lower()),dpi=300, bbox_inches='tight')
+            if df_results is not None:
+                df_max = df_results.iloc[:,2:].max(axis=1)
+                df_min = df_results.iloc[:,2:].min(axis=1)
+                df_results["range"] = df_max - df_min
+                df_results["dataset"] = [task_abv]*len(df_results)         
+                dfs.append(df_results)
 
-# %% [markdown]
+
+    dfs = pd.concat(dfs)    
+    cmap = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    aucs = sns.catplot(x="all",y="dataset", data=dfs, sharey=True, legend=True, 
+                    legend_out=True, height=6.5, aspect=0.85,palette=cmap, alpha=0.2, s=3)    
+    aucs.axes[0][0].set_ylabel(r"Task")    
+    aucs.axes[0][0].set_xlabel(r"AUC") 
+    plt.tight_layout()
+    plt.savefig("plots/underspec_tasks.pdf",dpi=300, bbox_inches='tight')
+    plt.show()          
+    gaps = sns.catplot(x="range",y="dataset", data=dfs, sharey=True,legend=True, 
+                    legend_out=True, height=6.5, aspect=0.85,palette=cmap, alpha=0.2, s=3)        
+    gaps.axes[0][0].set_ylabel("")    
+    gaps.axes[0][0].set_xlabel(r"AUC gap")    
+    plt.tight_layout()
+    plt.savefig("plots/underspec_gaps.pdf",dpi=300, bbox_inches='tight')
+    plt.show()      
+
+    plt.tight_layout()
+    plt.show()         
+
+
+def search_analyses_underspec(results_path, dataset, feature_type, metric, task_name, crit="performance", groups="both", k=50):
+    
+    fname = "{}{}_{}_{}.csv".format(results_path,dataset, feature_type, metric).lower()       
+    try:
+        df_results = pd.read_csv(fname) 
+        df_results_val = df_results[df_results["data"] == "val"].reset_index(drop=True)
+        df_results_test = df_results[df_results["data"] == "test"].reset_index(drop=True)
+        df_results_val, bs = get_best_seed(df_results_val, groups)   
+        #seeds with similar validation performance    
+        df_similar = find_similar_seeds(df_results_val, crit)
+#         df_similar = find_similar_seeds(df_results_val, "subgroup avg")
+#         print(df_similar)
+        #correspoding test performances
+        df_results_test = df_results_test[df_results_test["seed"].isin(df_similar["seed"].tolist())]
+        plot_deltas(df_results_test, task_name)
+        return df_results_test
+    except FileNotFoundError:
+        print("{} not found...".format(fname))        
+        return None
+    
+def all_search_underspecification(tasks_fname, feature_type, results_path, metric,crit="performance",  mini_tasks=True):
+    dfs = []
+    with open(tasks_fname,"r") as fid:                
+        for i,l in enumerate(fid):            
+            task_abv, task_name = l.strip("\n").split(",")
+            dataset = "mini-"+task_abv if mini_tasks else task_abv
+            fname = "{}_{}_{}.csv".format(dataset, feature_type, metric).lower()  
+            df_results = search_analyses_underspec(results_path, task_abv, feature_type, metric, task_name)
+            plt.show()      
+            plt.savefig("plots/underspec_{}.pdf".format(task_abv.lower()),dpi=300, bbox_inches='tight')
+            if df_results is not None:
+                df_max = df_results.iloc[:,2:].max(axis=1)
+                df_min = df_results.iloc[:,2:].min(axis=1)
+                df_results["range"] = df_max - df_min
+                df_results["dataset"] = [task_abv]*len(df_results)         
+                dfs.append(df_results)
+
+
+    dfs = pd.concat(dfs)    
+    cmap = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    aucs = sns.catplot(x="all",y="dataset", data=dfs, sharey=True, legend=True, 
+                    legend_out=True, height=6.5, aspect=0.85,palette=cmap, alpha=0.2, s=3)    
+    aucs.axes[0][0].set_ylabel(r"Task")    
+    aucs.axes[0][0].set_xlabel(r"AUC") 
+    plt.tight_layout()
+    plt.savefig("plots/underspec_tasks.pdf",dpi=300, bbox_inches='tight')
+    plt.show()          
+    gaps = sns.catplot(x="range",y="dataset", data=dfs, sharey=True,legend=True, 
+                    legend_out=True, height=6.5, aspect=0.85,palette=cmap, alpha=0.2, s=3)        
+    gaps.axes[0][0].set_ylabel("")    
+    gaps.axes[0][0].set_xlabel(r"AUC gap")    
+    plt.tight_layout()
+    plt.savefig("plots/underspec_gaps.pdf",dpi=300, bbox_inches='tight')
+    plt.show()      
+
+    plt.tight_layout()
+    plt.show()
+
+
 # # Analyses
 
-# %%
+# In[1]:
+
+
 def run_analyses(data_path, dataset, features_path, feature_type, results_path, 
-                 metric, clear_results=False):    
+                 metric, clear_results=False, subsample=False):    
 
     if not os.path.exists(results_path): os.makedirs(results_path)     
-
-    df_results = run(data_path, dataset, features_path, feature_type, results_path, metric, clear_results=clear_results)         
+    fname = "{}_{}_{}.csv".format(dataset, feature_type, metric).lower()
+    if clear_results:
+        try:
+            os.remove(results_path+fname)
+        except FileNotFoundError:
+            pass
+    if subsample:
+        df_results = run_subsample(data_path, dataset, features_path, feature_type, results_path, metric, clear_results=clear_results)         
+    else:
+        df_results = run(data_path, dataset, features_path, feature_type, results_path, metric, clear_results=clear_results)         
     fname = "{}_{}_{}.csv".format(dataset, feature_type, metric).lower()
     
     df_results.to_csv(results_path+fname, index=False, header=True)
@@ -819,10 +1075,12 @@ def is_task_done(path,  task):
             fid.write("")
         return False
 
-# %% [markdown]
+
 # # Plots
 
-# %%
+# In[16]:
+
+
 # Generate plots 
 
 def plot_densities(df, ax, title):
@@ -843,16 +1101,16 @@ def plot_analyses(results_path, dataset, task_name, feature_type, metric, minori
         except KeyError:
             df_results_part = df_results
 #         print(df_results)        
-        plot_deltas(df_results_part, task_name, minorities=minorities)
-        plt.savefig("plots/deltas_{}.pdf".format(dataset.lower()),dpi=300, bbox_inches='tight')
-        plt.show()      
+#         plot_deltas(df_results_part, task_name, minorities=minorities)
+#         plt.savefig("plots/deltas_{}.pdf".format(dataset.lower()),dpi=300, bbox_inches='tight')
+#         plt.show()      
         plot_scatters(df_results_part, task_name, minorities=minorities)        
         plt.savefig("plots/scatters_{}.pdf".format(dataset.lower()),dpi=300, bbox_inches='tight')
         plt.show()      
-        plot_val_vs_test(df_results, task_name)
-        plt.show()      
-        plot_val_vs_test(df_results, task_name, var="perf")
-        plt.show()      
+#         plot_val_vs_test(df_results, task_name)
+#         plt.show()      
+#         plot_val_vs_test(df_results, task_name, var="perf")
+#         plt.show()      
 
     except FileNotFoundError:
         print("{} not found...".format(fname))        
@@ -878,7 +1136,7 @@ def plot_deltas(results, title, minorities=False):
         df_deltas = get_deltas(results)
     df_delta_long = pd.melt(df_deltas, id_vars=["seed"], value_vars=subgroups, 
                                                       value_name="delta", var_name="group")
-    g = sns.catplot(x="group", y="delta", data=df_delta_long, sharey=True,legend=False)       
+    g = sns.catplot(x="group", y="delta", data=df_delta_long, sharey=True,legend=False, alpha=0.2, s=3)       
     
     for ax in g.axes[0]:
         ax.axhline(0, ls='--',c="r")
@@ -902,7 +1160,7 @@ def plot_scatters(results, title, minorities=False):
     else:
         n_rows=2
         n_cols = 3    
-        figsize=(12,8)
+        figsize=(9,6)
         results = get_deltas(results)
         subgroups = ["men","women","white","black","asian","hispanic"]        
     fig, ax = plt.subplots(n_rows, n_cols,  figsize=figsize, sharex=True, sharey=True)
@@ -913,17 +1171,17 @@ def plot_scatters(results, title, minorities=False):
     for subgroup, col, coord in zip(subgroups, cmap, coords ):        
         results[subgroup] = results[subgroup].abs()         
         results.plot.scatter(x="all",y=subgroup,
-                            color=col, ax=ax[coord[0]][coord[1]])
+                            color=col, ax=ax[coord[0]][coord[1]], alpha=0.3, s=2)
         x = results["all"]
         y = results[subgroup]
-        z = np.polyfit(x, y, 1)
-        y_hat = np.poly1d(z)(x)
-        ax[coord[0]][coord[1]].plot(x, y_hat, c=col, lw=1)
+#         z = np.polyfit(x, y, 1)
+#         y_hat = np.poly1d(z)(x)
+#         ax[coord[0]][coord[1]].plot(x, y_hat, c=col, lw=1)
         ax[coord[0]][coord[1]].set_title(subgroup)
-        ax[coord[0]][coord[1]].set_ylabel(r"$\Delta$ AUC")
+        ax[coord[0]][coord[1]].set_ylabel(r"$|\Delta$ AUC$|$")
         ax[coord[0]][coord[1]].set_xlabel(r"AUC")
 #         ax[coord[0]][coord[1]].set_ylabel("delta")
-    fig.suptitle(title, y=1.02)
+    fig.suptitle(title, y=1.05)
     plt.tight_layout(pad=0.1) 
 
 def plot_val_vs_test(results, title, var="delta"):
@@ -1045,14 +1303,14 @@ def plot_summary(tasks_fname, feature_type, results_path, metric, mini_tasks=Tru
     dfs = pd.concat(dfs)    
     cmap = plt.rcParams['axes.prop_cycle'].by_key()['color']
     aucs = sns.catplot(x="all",y="dataset", data=dfs, sharey=True, legend=True, 
-                    legend_out=True, height=6.5, aspect=0.85,palette=cmap)    
+                    legend_out=True, height=6.5, aspect=0.85,palette=cmap, alpha=0.2, s=3)    
     aucs.axes[0][0].set_ylabel(r"Task")    
     aucs.axes[0][0].set_xlabel(r"AUC") 
     plt.tight_layout()
     plt.savefig("plots/tasks.pdf",dpi=300, bbox_inches='tight')
     plt.show()          
     gaps = sns.catplot(x="range",y="dataset", data=dfs, sharey=True,legend=True, 
-                    legend_out=True, height=6.5, aspect=0.85,palette=cmap)        
+                    legend_out=True, height=6.5, aspect=0.85,palette=cmap, alpha=0.2, s=3)        
     gaps.axes[0][0].set_ylabel("")    
     gaps.axes[0][0].set_xlabel(r"AUC gap")    
     plt.tight_layout()
@@ -1064,37 +1322,27 @@ def plot_summary(tasks_fname, feature_type, results_path, metric, mini_tasks=Tru
     
 
 def plot_rocs(df, seed):    
-    n_rows=2
-    n_cols = 3    
-    figsize=(12,8)
-    fig1, ax1 = plt.subplots(n_rows, n_cols,  figsize=figsize, sharex=True, sharey=True)
     fig2, ax2 = plt.subplots(1, 1)
 
     #current coloramap
     cmap = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    coords = list(itertools.product(range(n_rows),range(n_cols)))   
+
     x=[0,1]
     y=[0,1]
-    ax2.plot(x, y)
+
+    ax2.plot(x, y,"k:")
     subgroups = ["men","women","white","black","asian","hispanic"]        
     results = df[df["seed"] == seed]
     
-    for subgroup, col, coord in zip(subgroups, cmap, coords ):                
+    for subgroup, col in zip(subgroups, cmap ):                
+#         print(results[subgroup])
         z = results[subgroup].item()
-
         tpr, fpr, tr = z.split("::")
         tpr = np.array(ast.literal_eval(tpr))
         fpr = np.array(ast.literal_eval(fpr))
-        ax2.plot(tpr,fpr, c=col)
-#         set_trace()        
-        ax1[coord[0]][coord[1]].plot(tpr,fpr, c=col)
-        ax1[coord[0]][coord[1]].plot(x,y,"k:")
-
-#         ax[coord[0]][coord[1]].set_xlabel(xlabel)
-#         ax[coord[0]][coord[1]].set_ylabel(ylabel)
-        ax1[coord[0]][coord[1]].set_title(subgroup)
-        
-#     fig.suptitle(title, y=1.02)
-#     plt.tight_layout(pad=0.1) 
+        ax2.plot(tpr,fpr, c=col, label=subgroup)
+    plt.legend(loc='lower left', bbox_to_anchor=(1.05, 0))
     plt.show()
-    
+
+
+# # Main
